@@ -325,14 +325,5 @@ export type {
 // Exit codes
 export { EXIT_CODES } from './utils/exit-codes'
 
-// ============================================================================
-// Run Main
-// ============================================================================
-
-// Only run main when executed directly
-if (require.main === module) {
-    main().catch((error) => {
-        console.error('Fatal error:', error)
-        process.exit(EXIT_CODES.FATAL)
-    })
-}
+// Export main for CLI entry point
+export { main }
