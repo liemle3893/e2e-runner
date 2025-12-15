@@ -1,0 +1,85 @@
+{
+  "name": "@liemle3893/e2e-runner",
+  "version": "1.0.0",
+  "description": "E2E Test Runner - End-to-End Testing Framework for API and Database Testing",
+  "author": "liemle3893",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "e2e-runner": "./bin/e2e.js",
+    "e2e": "./bin/e2e.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [
+    "e2e",
+    "testing",
+    "end-to-end",
+    "api-testing",
+    "database-testing",
+    "yaml",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "p-limit": "^6.2.0",
+    "yaml": "^2.7.0"
+  },
+  "optionalDependencies": {
+    "ajv": "^8.17.1",
+    "minimatch": "^10.0.1"
+  },
+  "peerDependencies": {
+    "@azure/event-hubs": "^6.0.0",
+    "ioredis": "^5.0.0",
+    "mongodb": "^6.0.0",
+    "pg": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    },
+    "ioredis": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "@azure/event-hubs": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@azure/event-hubs": "^6.0.0",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.16.0",
+    "ioredis": "^5.8.2",
+    "mongodb": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liemle3893/e2e-runner.git"
+  },
+  "homepage": "https://github.com/liemle3893/e2e-runner#readme",
+  "bugs": {
+    "url": "https://github.com/liemle3893/e2e-runner/issues"
+  }
+}
