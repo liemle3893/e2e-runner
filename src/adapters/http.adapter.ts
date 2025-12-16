@@ -183,6 +183,9 @@ export class HTTPAdapter extends BaseAdapter {
         duration,
       };
 
+      // Log HTTP response in debug mode
+      this.logHttpResponse(method, url, httpResponse);
+
       // Handle captures
       if (params.capture) {
         this.handleCaptures(
@@ -249,6 +252,51 @@ export class HTTPAdapter extends BaseAdapter {
     }
 
     return url.toString();
+  }
+
+  /**
+   * Format and log HTTP response for debug mode
+   */
+  private logHttpResponse(
+    method: string,
+    url: string,
+    response: HTTPResponse
+  ): void {
+    const statusLine = `HTTP/1.1 ${response.statusText} ${response.status}`;
+
+    // Format headers
+    const headerLines = Object.entries(response.headers)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+
+    // Format body
+    let bodyStr: string;
+    if (response.body === null || response.body === undefined) {
+      bodyStr = '';
+    } else if (typeof response.body === 'string') {
+      bodyStr = response.body;
+    } else {
+      try {
+        bodyStr = JSON.stringify(response.body, null, 2);
+      } catch {
+        bodyStr = String(response.body);
+      }
+    }
+
+    // Build full response output
+    const output = [
+      `\n┌─── HTTP Response ───────────────────────────────────────`,
+      `│ ${method} ${url}`,
+      `├─── Status ──────────────────────────────────────────────`,
+      `│ ${statusLine}`,
+      `├─── Headers ─────────────────────────────────────────────`,
+      ...headerLines.split('\n').map(line => `│ ${line}`),
+      `├─── Body (${response.duration}ms) ────────────────────────────────────`,
+      ...bodyStr.split('\n').map(line => `│ ${line}`),
+      `└─────────────────────────────────────────────────────────\n`,
+    ].join('\n');
+
+    this.logger.debug(output);
   }
 
   /**
