@@ -1,0 +1,72 @@
+name: TC-REDIS-001
+description: Redis adapter test - Cache get/set/delete operations
+priority: P0
+tags: [redis, adapter, e2e]
+timeout: 30000
+
+variables:
+  test_value: "Hello Redis!"
+  updated_value: "Updated Redis Value"
+
+setup:
+  # Clean up any existing test keys with matching pattern
+  - adapter: redis
+    action: flushPattern
+    pattern: "test-redis-*"
+
+execute:
+  # Step 1: Set a cache value via HTTP API
+  - adapter: http
+    action: request
+    method: PUT
+    url: "{{baseUrl}}/cache/test-redis-{{$uuid()}}"
+    headers:
+      Content-Type: "application/json"
+    body:
+      value: "{{test_value}}"
+      ttl: 300
+    capture:
+      test_key: "$.key"
+    assert:
+      status: 200
+      json:
+        - path: "$.value"
+          equals: "{{test_value}}"
+
+  # Step 2: Get cache value via HTTP API
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/cache/{{captured.test_key}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.value"
+          equals: "{{test_value}}"
+
+  # Step 3: Update cache value
+  - adapter: http
+    action: request
+    method: PUT
+    url: "{{baseUrl}}/cache/{{captured.test_key}}"
+    headers:
+      Content-Type: "application/json"
+    body:
+      value: "{{updated_value}}"
+    assert:
+      status: 200
+
+verify:
+  # Verify the value exists in Redis with updated data
+  - adapter: redis
+    action: get
+    key: "{{captured.test_key}}"
+    assert:
+      equals: "{{updated_value}}"
+
+teardown:
+  # Clean up: Delete the test key
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/cache/{{captured.test_key}}"

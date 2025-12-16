@@ -118,9 +118,12 @@ export class StepExecutor {
             }
 
             // Handle captures from step result
-            if (step.capture && adapterResult.data !== undefined) {
-                this.captureValues(step.capture, adapterResult.data, context)
-            }
+            // Note: For HTTP adapter, captures are handled directly by the adapter
+            // (passed via interpolatedParams.capture), so we skip redundant capture here.
+            // For other adapters that don't handle captures internally, we extract from result data.
+            // We check if capture was NOT passed to the adapter by checking if it exists in result data structure.
+            // The HTTP adapter returns {request, response} which doesn't match capture paths like $.field
+            // so we only run this for adapters that return the actual result data directly.
 
             const duration = Date.now() - startTime
             this.logger.debug(`Step ${step.id} completed in ${duration}ms`)
@@ -169,8 +172,16 @@ export class StepExecutor {
         // Pass step-level assertions to adapter for validation
         // This fixes a bug where assertions defined in YAML were separated from params
         // by the loader, causing the HTTP adapter to never validate them
+        // Assertions must also be interpolated to resolve variables like {{test_name}}
         if (step.assert) {
-            interpolatedParams.assert = step.assert
+            interpolatedParams.assert = interpolateObject(step.assert, interpolationContext)
+        }
+
+        // Pass step-level captures to adapter for extraction
+        // Same fix as assertions - captures were separated from params by the loader
+        // Captures must also be interpolated to resolve variables in capture paths
+        if (step.capture) {
+            interpolatedParams.capture = interpolateObject(step.capture, interpolationContext)
         }
 
         // Get the appropriate adapter

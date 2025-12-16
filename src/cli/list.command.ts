@@ -12,6 +12,7 @@ import {
     filterTestsByPatterns,
     filterTestsByPriority,
     filterTestsByTags,
+    loadConfig,
 } from '../core'
 import { isE2ERunnerError, wrapError } from '../errors'
 import type { CLIArgs, DiscoveredTest, TestPriority } from '../types'
@@ -79,10 +80,25 @@ export async function listCommand(args: CLIArgs): Promise<ListCommandResult> {
     const useColors = !options.noColor && process.stdout.isTTY !== false
 
     try {
-        // 1. Discover tests
-        logger.debug('Discovering test files...')
+        // 1. Load config to get testDir fallback
+        let testDir = options.testDir
+        if (!testDir) {
+            try {
+                const config = await loadConfig({
+                    configPath: options.config,
+                    environment: options.env,
+                })
+                testDir = config.testDir
+            } catch {
+                // Config not found or invalid, use default
+                testDir = '.'
+            }
+        }
+
+        // 2. Discover tests
+        logger.debug(`Discovering test files in: ${testDir}`)
         let tests = await discoverTests({
-            basePath: 'tests/e2e',
+            basePath: testDir,
             patterns: ['**/*.test.yaml', '**/*.test.ts'],
         })
 

@@ -1,0 +1,90 @@
+# E2E Test Runner Configuration
+# Generated from e2e.config.example.yaml
+
+version: "1.0"
+
+# Environment-specific configurations
+environments:
+  local:
+    baseUrl: "http://localhost:7071"
+    adapters:
+      postgresql:
+        connectionString: "${POSTGRESQL_CONNECTION_STRING}"
+        schema: "public"
+        poolSize: 5
+      redis:
+        connectionString: "${REDIS_CONNECTION_STRING}"
+        db: 0
+        keyPrefix: ""
+      mongodb:
+        connectionString: "${MONGODB_CONNECTION_STRING}"
+        database: "win_membership"
+      eventhub:
+        connectionString: "${EVENTHUB_CONNECTION_STRING}"
+        consumerGroup: "$Default"
+
+  # Demo server environment (uses docker-compose services)
+  demo:
+    baseUrl: "http://localhost:3000"
+    adapters:
+      postgresql:
+        connectionString: "postgresql://fortune:fortune@localhost:5432/fortune_play"
+        schema: "public"
+        poolSize: 5
+      redis:
+        connectionString: "redis://localhost:6379"
+        db: 0
+        keyPrefix: ""
+      mongodb:
+        connectionString: "mongodb://root:root@localhost:27017"
+        database: "demo"
+      eventhub:
+        connectionString: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;EntityPath=fortune-events"
+        consumerGroup: "$Default"
+
+  #staging:
+  #  baseUrl: "https://example.com"
+  #  adapters:
+  #    postgresql:
+  #      connectionString: "${STAGING_PG_CONNECTION_STRING}"
+  #      schema: "public"
+  #      poolSize: 3
+  #    redis:
+  #      connectionString: "${STAGING_REDIS_CONNECTION_STRING}"
+  #      db: 0
+  #    mongodb:
+  #      connectionString: "${STAGING_MONGODB_CONNECTION_STRING}"
+  #      database: "db_staging"
+
+# Default settings applied to all tests
+defaults:
+  timeout: 30000        # 30 seconds
+  retries: 2            # Retry failed tests twice
+  retryDelay: 1000      # 1 second between retries
+  parallel: 4           # Run up to 4 tests in parallel
+
+# Global variables available to all tests
+variables:
+  testPrefix: "e2e_test_"
+  defaultUserId: "e2e-test-user"
+  access_token: "${JWT}"
+  # Capillary API configuration
+  
+
+# Lifecycle hooks (disabled for now)
+# hooks:
+#   beforeAll: "./lib/global-setup.ts"
+#   afterAll: "./lib/global-teardown.ts"
+#   beforeEach: "./lib/test-setup.ts"
+#   afterEach: "./lib/test-teardown.ts"
+
+# Reporter configuration
+reporters:
+  - type: console
+    verbose: true
+  - type: junit
+    output: "./reports/junit.xml"
+  - type: html
+    output: "./reports/report.html"
+  - type: json
+    output: "./reports/results.json"

@@ -1,0 +1,59 @@
+name: TC-EVENTHUB-001
+description: EventHub adapter test - Event publish and consume
+priority: P0
+tags: [eventhub, adapter, e2e]
+timeout: 60000
+
+variables:
+  event_type: "test.event"
+  event_data_value: "Hello EventHub"
+  correlation_id: "{{$uuid()}}"
+
+setup:
+  # No setup needed - EventHub doesn't support clearing events
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/health"
+    assert:
+      status: 200
+
+execute:
+  # Step 1: Publish an event via HTTP API
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/events"
+    headers:
+      Content-Type: "application/json"
+    body:
+      type: "{{event_type}}"
+      data:
+        message: "{{event_data_value}}"
+        correlationId: "{{correlation_id}}"
+      partitionKey: "test-partition"
+    capture:
+      published_type: "$.event.type"
+    assert:
+      status: 202
+      json:
+        - path: "$.message"
+          equals: "Event published successfully"
+
+verify:
+  # Verify by consuming recent events from EventHub
+  - adapter: eventhub
+    action: consume
+    topic: "fortune-events"
+    timeout: 500
+    count: 1
+
+teardown:
+  # No explicit teardown needed for events
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/health"
+    continueOnError: true
+    assert:
+      status: 200

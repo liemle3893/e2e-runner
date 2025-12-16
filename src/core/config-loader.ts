@@ -106,10 +106,14 @@ export async function loadConfig(
     ? resolveEnvironmentVariables(raw.variables, false)
     : {};
 
+  // Resolve testDir (config value or default to current directory)
+  const testDir = raw.testDir || '.';
+
   return {
     raw,
     environment: resolvedEnvConfig,
     environmentName: environment,
+    testDir,
     defaults,
     variables: resolvedVariables,
     reporters: raw.reporters || [{ type: 'console' }],

@@ -1,0 +1,82 @@
+name: TC-POSTGRES-001
+description: PostgreSQL adapter test - User CRUD operations
+priority: P0
+tags: [postgresql, adapter, e2e]
+timeout: 30000
+
+variables:
+  test_name: "Test User Postgres"
+  updated_name: "Updated User Postgres"
+
+setup:
+  # Clean up any existing test data with matching email pattern
+  - adapter: postgresql
+    action: execute
+    sql: "DELETE FROM users WHERE email LIKE 'test-postgres-%@example.com'"
+
+execute:
+  # Step 1: Create a new user via HTTP API
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/users"
+    headers:
+      Content-Type: "application/json"
+    body:
+      email: "test-postgres-{{$uuid()}}@example.com"
+      name: "{{test_name}}"
+    capture:
+      user_id: "$.id"
+      created_email: "$.email"
+    assert:
+      status: 201
+      json:
+        - path: "$.name"
+          equals: "{{test_name}}"
+
+  # Step 2: Get user via HTTP API (just check status, not id type)
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/users/{{captured.user_id}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.email"
+          equals: "{{captured.created_email}}"
+
+  # Step 3: Update user via HTTP API
+  - adapter: http
+    action: request
+    method: PUT
+    url: "{{baseUrl}}/users/{{captured.user_id}}"
+    headers:
+      Content-Type: "application/json"
+    body:
+      name: "{{updated_name}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.name"
+          equals: "{{updated_name}}"
+
+verify:
+  # Verify the user exists via HTTP API with updated data
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/users/{{captured.user_id}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.name"
+          equals: "{{updated_name}}"
+        - path: "$.email"
+          equals: "{{captured.created_email}}"
+
+teardown:
+  # Clean up: Delete the test user
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/users/{{captured.user_id}}"

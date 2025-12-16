@@ -8,6 +8,7 @@
 
 export interface E2EConfig {
   version: '1.0';
+  testDir?: string;
   environments: Record<string, EnvironmentConfig>;
   defaults?: DefaultsConfig;
   variables?: Record<string, string | number | boolean>;
@@ -197,7 +198,7 @@ export interface Logger {
 // CLI Types
 // ============================================================================
 
-export type CLICommand = 'run' | 'validate' | 'list' | 'health' | 'init';
+export type CLICommand = 'run' | 'validate' | 'list' | 'health' | 'init' | 'test';
 
 export interface CLIArgs {
   command: CLICommand;
@@ -241,6 +242,12 @@ export interface CLIOptions {
 
   // Health command options
   adapter: string;
+
+  // Test command options
+  testTemplate: string;
+  testDescription: string;
+  testPriority: string;
+  testTags: string;
 }
 
 // ============================================================================
@@ -304,6 +311,7 @@ export interface LoadedConfig {
   raw: E2EConfig;
   environment: EnvironmentConfig;
   environmentName: string;
+  testDir: string;
   defaults: Required<DefaultsConfig>;
   variables: Record<string, unknown>;
   reporters: ReporterConfig[];
@@ -327,7 +335,7 @@ export const DEFAULT_CLI_OPTIONS: Partial<CLIOptions> = {
   verbose: false,
   quiet: false,
   noColor: false,
-  testDir: '.',
+  testDir: undefined,  // Falls back to config.testDir, then '.'
   reportDir: './reports',
   parallel: 1,
   timeout: 30000,
@@ -346,4 +354,9 @@ export const DEFAULT_CLI_OPTIONS: Partial<CLIOptions> = {
   stepByStep: false,
   captureTraffic: false,
   adapter: '',
+  // Test command defaults
+  testTemplate: 'api',
+  testDescription: '',
+  testPriority: 'P0',
+  testTags: 'e2e',
 };

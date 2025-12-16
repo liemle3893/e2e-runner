@@ -86,9 +86,11 @@ export async function runCommand(args: CLIArgs): Promise<RunCommandResult> {
         logger.debug(`Using environment: ${config.environmentName}`)
 
         // 3. Discover tests
-        logger.debug('Discovering tests...')
+        // Priority: CLI option > config testDir > default '.'
+        const testDir = options.testDir || config.testDir
+        logger.debug(`Discovering tests in: ${testDir}`)
         let tests = await discoverTests({
-            basePath: 'tests/e2e',
+            basePath: testDir,
             patterns: ['**/*.test.yaml', '**/*.test.ts'],
         })
 

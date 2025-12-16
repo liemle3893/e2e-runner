@@ -1,0 +1,79 @@
+name: TC-MONGODB-001
+description: MongoDB adapter test - Document CRUD operations
+priority: P0
+tags: [mongodb, adapter, e2e]
+timeout: 30000
+
+variables:
+  test_content: "This is a test document for MongoDB adapter testing"
+  test_tag: "e2e-test"
+
+setup:
+  # Clean up any existing test documents with matching tag
+  - adapter: mongodb
+    action: deleteMany
+    collection: "documents"
+    filter:
+      tags: "e2e-test"
+
+execute:
+  # Step 1: Create a new document via HTTP API
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/documents"
+    headers:
+      Content-Type: "application/json"
+    body:
+      title: "Test Document {{$uuid()}}"
+      content: "{{test_content}}"
+      tags:
+        - "{{test_tag}}"
+    capture:
+      document_id: "$.id"
+      document_title: "$.title"
+    assert:
+      status: 201
+      json:
+        - path: "$.content"
+          equals: "{{test_content}}"
+
+  # Step 2: Get document via HTTP API
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/documents/{{captured.document_id}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.title"
+          equals: "{{captured.document_title}}"
+
+  # Step 3: List documents with tag filter
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/documents"
+    query:
+      tag: "{{test_tag}}"
+    assert:
+      status: 200
+
+verify:
+  # Verify via HTTP API instead of direct MongoDB (simpler)
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/documents/{{captured.document_id}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.content"
+          equals: "{{test_content}}"
+
+teardown:
+  # Clean up: Delete the test document
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/documents/{{captured.document_id}}"

@@ -13,7 +13,7 @@ import { DEFAULT_CLI_OPTIONS } from '../types'
 
 const VERSION = '1.0.0'
 
-const VALID_COMMANDS: CLICommand[] = ['run', 'validate', 'list', 'health', 'init']
+const VALID_COMMANDS: CLICommand[] = ['run', 'validate', 'list', 'health', 'init', 'test']
 
 const HELP_TEXT = `E2E Test Runner - End-to-End Testing Framework
 
@@ -22,7 +22,16 @@ USAGE: e2e <command> [options] [patterns...]
 COMMANDS:
   run         Run E2E tests (default)    validate    Validate test files
   list        List discovered tests      health      Check adapter connectivity
-  init        Initialize config files
+  init        Initialize config files    test        Create test files
+
+TEST SUBCOMMANDS:
+  test create <name>                Create new test from template
+    --template, -t <type>           Template: api|crud|integration|event-driven|db-verification
+    --description, -D <text>        Test description
+    --output, -o <path>             Output directory (default: testDir from config)
+    --priority <level>              Priority: P0|P1|P2|P3 (default: P0)
+    --tags <tags>                   Comma-separated tags (default: e2e)
+  test list-templates               List available templates
 
 OPTIONS:
   -c, --config <path>    Config file path (default: e2e.config.yaml)
@@ -172,6 +181,8 @@ function parseShortOption(
         '-g': 'grep',
         '-o': 'output',
         '-h': 'help',
+        '-D': 'testDescription',
+        '-T': 'testTemplate',
     }
 
     const key = shortMap[arg]
@@ -269,6 +280,13 @@ function normalizeLongOption(arg: string): string | null {
         adapter: 'adapter',
         help: 'help',
         version: 'version',
+        // Test command options
+        template: 'testTemplate',
+        'test-template': 'testTemplate',
+        description: 'testDescription',
+        'test-description': 'testDescription',
+        'test-priority': 'testPriority',
+        'test-tags': 'testTags',
     }
 
     return keyMap[optionName] || null
@@ -277,7 +295,7 @@ function normalizeLongOption(arg: string): string | null {
 /** Apply parsed option to options object */
 function applyOption(options: CLIOptions, key: string, value: string | boolean): void {
     const opts = options as unknown as Record<string, unknown>
-    const STRING_OPTS = ['config', 'env', 'testDir', 'reportDir', 'grep', 'output', 'adapter']
+    const STRING_OPTS = ['config', 'env', 'testDir', 'reportDir', 'grep', 'output', 'adapter', 'testTemplate', 'testDescription', 'testPriority', 'testTags']
     const NUMBER_OPTS = ['parallel', 'timeout', 'retries']
     const BOOL_OPTS = [
         'verbose',
@@ -335,6 +353,13 @@ export function printError(message: string, hint?: string): void {
     if (hint) {
         console.error(`Hint: ${hint}`)
     }
+}
+
+/**
+ * Print success message
+ */
+export function printSuccess(message: string): void {
+    console.log(`✓ ${message}`)
 }
 
 // ============================================================================

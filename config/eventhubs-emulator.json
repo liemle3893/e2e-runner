@@ -1,0 +1,23 @@
+{
+  "UserConfig": {
+    "NamespaceConfig": [
+      {
+        "Type": "EventHub",
+        "Name": "emulatorNs1",
+        "Entities": [
+          {
+            "Name": "fortune-events",
+            "PartitionCount": "2"
+          },
+          {
+            "Name": "test-events",
+            "PartitionCount": "2"
+          }
+        ]
+      }
+    ],
+    "LoggingConfig": {
+      "Type": "File"
+    }
+  }
+}

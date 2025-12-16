@@ -88,10 +88,25 @@ export async function validateCommand(args: CLIArgs): Promise<ValidateCommandRes
             // Continue validation even if config has issues
         }
 
-        // 2. Discover test files
-        logger.debug('Discovering test files...')
+        // 2. Determine testDir (CLI option > config > default)
+        let testDir = options.testDir
+        if (!testDir) {
+            try {
+                const config = await loadConfig({
+                    configPath: options.config,
+                    environment: options.env,
+                })
+                testDir = config.testDir
+            } catch {
+                // Config not found or invalid, use default
+                testDir = '.'
+            }
+        }
+
+        // 3. Discover test files
+        logger.debug(`Discovering test files in: ${testDir}`)
         let tests = await discoverTests({
-            basePath: 'tests/e2e',
+            basePath: testDir,
             patterns: ['**/*.test.yaml', '**/*.test.ts'],
         })
 

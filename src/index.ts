@@ -10,6 +10,7 @@ import { healthCommand } from './cli/health.command'
 import { initCommand } from './cli/init.command'
 import { listCommand } from './cli/list.command'
 import { runCommand } from './cli/run.command'
+import { listTemplates, testCreateCommand, type TemplateType } from './cli/test.command'
 import { validateCommand } from './cli/validate.command'
 import { isE2ERunnerError } from './errors'
 import type { CLIArgs, TestSuiteResult } from './types'
@@ -83,6 +84,10 @@ async function routeCommand(args: CLIArgs): Promise<number> {
             return result.exitCode
         }
 
+        case 'test': {
+            return await handleTestCommand(args)
+        }
+
         default: {
             // Should not reach here due to validation
             printError(`Unknown command: ${args.command}`)
@@ -90,6 +95,58 @@ async function routeCommand(args: CLIArgs): Promise<number> {
             return EXIT_CODES.FATAL
         }
     }
+}
+
+/**
+ * Handle test subcommands (create, list-templates)
+ */
+async function handleTestCommand(args: CLIArgs): Promise<number> {
+    const { patterns, options } = args
+    const subcommand = patterns[0]
+
+    if (!subcommand || subcommand === 'help') {
+        console.log('Usage: e2e test <subcommand> [options]')
+        console.log()
+        console.log('Subcommands:')
+        console.log('  create <name>     Create a new test from template')
+        console.log('  list-templates    List available templates')
+        console.log()
+        console.log('Run "e2e test create --help" for create options')
+        return EXIT_CODES.SUCCESS
+    }
+
+    if (subcommand === 'list-templates') {
+        listTemplates()
+        return EXIT_CODES.SUCCESS
+    }
+
+    if (subcommand === 'create') {
+        const testName = patterns[1]
+
+        if (!testName) {
+            printError('Test name is required', 'Usage: e2e test create <name> [options]')
+            return EXIT_CODES.VALIDATION_ERROR
+        }
+
+        const result = await testCreateCommand({
+            name: testName,
+            template: (options.testTemplate || 'api') as TemplateType,
+            description: options.testDescription || undefined,
+            output: options.output || undefined,
+            priority: options.testPriority || 'P0',
+            tags: options.testTags || 'e2e',
+            config: options.config,
+            env: options.env,
+            verbose: options.verbose,
+            quiet: options.quiet,
+            noColor: options.noColor,
+        })
+
+        return result.exitCode
+    }
+
+    printError(`Unknown test subcommand: ${subcommand}`, 'Valid subcommands: create, list-templates')
+    return EXIT_CODES.VALIDATION_ERROR
 }
 
 // ============================================================================

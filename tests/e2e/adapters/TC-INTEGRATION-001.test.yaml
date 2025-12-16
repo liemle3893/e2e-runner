@@ -1,0 +1,130 @@
+name: TC-INTEGRATION-001
+description: Integration test - Full flow using PostgreSQL, Redis, MongoDB
+priority: P0
+tags: [integration, postgresql, redis, mongodb, e2e]
+timeout: 120000
+
+variables:
+  test_name: "Integration Test User"
+
+setup:
+  # Clean up PostgreSQL
+  - adapter: postgresql
+    action: execute
+    sql: "DELETE FROM users WHERE email LIKE 'integration-%@example.com'"
+
+  # Clean up Redis (pattern-based)
+  - adapter: redis
+    action: flushPattern
+    pattern: "user-profile-cache-*"
+
+  # Clean up MongoDB
+  - adapter: mongodb
+    action: deleteMany
+    collection: "documents"
+    filter:
+      tags: "integration-test"
+
+execute:
+  # Step 1: Create a user in PostgreSQL via HTTP
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/users"
+    headers:
+      Content-Type: "application/json"
+    body:
+      email: "integration-{{$uuid()}}@example.com"
+      name: "{{test_name}}"
+    capture:
+      user_id: "$.id"
+      user_email: "$.email"
+    assert:
+      status: 201
+      json:
+        - path: "$.name"
+          equals: "{{test_name}}"
+
+  # Step 2: Cache the user profile in Redis
+  - adapter: http
+    action: request
+    method: PUT
+    url: "{{baseUrl}}/cache/user-profile-cache-{{captured.user_id}}"
+    headers:
+      Content-Type: "application/json"
+    body:
+      value: "user-{{captured.user_id}}"
+      ttl: 3600
+    capture:
+      cache_key: "$.key"
+    assert:
+      status: 200
+
+  # Step 3: Create an activity log document in MongoDB
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/documents"
+    headers:
+      Content-Type: "application/json"
+    body:
+      title: "User Activity Log {{$uuid()}}"
+      content: "User {{captured.user_id}} was created"
+      tags:
+        - "integration-test"
+        - "user-activity"
+    capture:
+      document_id: "$.id"
+    assert:
+      status: 201
+
+verify:
+  # Verify user via HTTP (avoids type issues with direct DB query)
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/users/{{captured.user_id}}"
+    assert:
+      status: 200
+      json:
+        - path: "$.email"
+          equals: "{{captured.user_email}}"
+        - path: "$.name"
+          equals: "{{test_name}}"
+
+  # Verify cache in Redis
+  - adapter: redis
+    action: get
+    key: "{{captured.cache_key}}"
+    assert:
+      contains: "{{captured.user_id}}"
+
+  # Verify document via HTTP
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/documents/{{captured.document_id}}"
+    assert:
+      status: 200
+
+teardown:
+  # Clean up PostgreSQL
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/users/{{captured.user_id}}"
+    continueOnError: true
+
+  # Clean up Redis
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/cache/{{captured.cache_key}}"
+    continueOnError: true
+
+  # Clean up MongoDB
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/documents/{{captured.document_id}}"
+    continueOnError: true
