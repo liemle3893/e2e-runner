@@ -7,6 +7,8 @@
 import { AdapterError, AssertionError } from '../errors';
 import type { AdapterConfig, AdapterContext, AdapterStepResult } from '../types';
 import { BaseAdapter } from './base.adapter';
+import { evaluateJSONPath as evaluateJSONPathFull } from '../assertions/jsonpath';
+import { runAssertion, type BaseAssertion } from '../assertions/assertion-runner';
 
 // ============================================================================
 // Types
@@ -48,16 +50,8 @@ export interface HTTPAssertion {
   };
 }
 
-export interface JSONPathAssertion {
+export interface JSONPathAssertion extends BaseAssertion {
   path: string;
-  equals?: unknown;
-  contains?: string;
-  matches?: string;
-  exists?: boolean;
-  type?: string;
-  length?: number;
-  greaterThan?: number;
-  lessThan?: number;
 }
 
 // ============================================================================
@@ -334,40 +328,10 @@ export class HTTPAdapter extends BaseAdapter {
 
   /**
    * Evaluate a JSONPath expression
+   * Supports full JSONPath syntax including array indexing: $.errors[0].code
    */
   private evaluateJSONPath(data: unknown, path: string): unknown {
-    if (!path.startsWith('$.')) {
-      // Assume it's a simple property access
-      return this.getNestedValue(data, path);
-    }
-
-    // Remove $. prefix and evaluate
-    const cleanPath = path.slice(2);
-    return this.getNestedValue(data, cleanPath);
-  }
-
-  /**
-   * Get nested value from object using dot notation
-   */
-  private getNestedValue(obj: unknown, path: string): unknown {
-    if (!path) return obj;
-
-    const segments = path.split(/\.|\[|\]/).filter(Boolean);
-    let current: unknown = obj;
-
-    for (const segment of segments) {
-      if (current === null || current === undefined) {
-        return undefined;
-      }
-
-      if (typeof current === 'object') {
-        current = (current as Record<string, unknown>)[segment];
-      } else {
-        return undefined;
-      }
-    }
-
-    return current;
+    return evaluateJSONPathFull(data, path);
   }
 
   /**
@@ -522,127 +486,10 @@ export class HTTPAdapter extends BaseAdapter {
   }
 
   /**
-   * Run a single JSON path assertion
+   * Run a single JSON path assertion using shared runner
    */
   private runJSONAssertion(data: unknown, assertion: JSONPathAssertion): void {
     const value = this.evaluateJSONPath(data, assertion.path);
-
-    if (assertion.exists === true && value === undefined) {
-      throw new AssertionError(`${assertion.path} does not exist`, {
-        path: assertion.path,
-        operator: 'exists',
-      });
-    }
-
-    if (assertion.exists === false && value !== undefined) {
-      throw new AssertionError(`${assertion.path} exists but should not`, {
-        path: assertion.path,
-        actual: value,
-        operator: 'notExists',
-      });
-    }
-
-    if (assertion.equals !== undefined && value !== assertion.equals) {
-      throw new AssertionError(
-        `${assertion.path} = ${JSON.stringify(value)}, expected ${JSON.stringify(assertion.equals)}`,
-        {
-          path: assertion.path,
-          expected: assertion.equals,
-          actual: value,
-          operator: 'equals',
-        }
-      );
-    }
-
-    if (
-      assertion.contains &&
-      !String(value).includes(assertion.contains)
-    ) {
-      throw new AssertionError(
-        `${assertion.path} does not contain "${assertion.contains}"`,
-        {
-          path: assertion.path,
-          expected: assertion.contains,
-          actual: value,
-          operator: 'contains',
-        }
-      );
-    }
-
-    if (
-      assertion.matches &&
-      !new RegExp(assertion.matches).test(String(value))
-    ) {
-      throw new AssertionError(
-        `${assertion.path} does not match /${assertion.matches}/`,
-        {
-          path: assertion.path,
-          expected: assertion.matches,
-          actual: value,
-          operator: 'matches',
-        }
-      );
-    }
-
-    if (assertion.type && typeof value !== assertion.type) {
-      throw new AssertionError(
-        `${assertion.path} type is ${typeof value}, expected ${assertion.type}`,
-        {
-          path: assertion.path,
-          expected: assertion.type,
-          actual: typeof value,
-          operator: 'type',
-        }
-      );
-    }
-
-    if (assertion.length !== undefined) {
-      const len = Array.isArray(value)
-        ? value.length
-        : typeof value === 'string'
-          ? value.length
-          : -1;
-      if (len !== assertion.length) {
-        throw new AssertionError(
-          `${assertion.path} length is ${len}, expected ${assertion.length}`,
-          {
-            path: assertion.path,
-            expected: assertion.length,
-            actual: len,
-            operator: 'length',
-          }
-        );
-      }
-    }
-
-    if (
-      assertion.greaterThan !== undefined &&
-      Number(value) <= assertion.greaterThan
-    ) {
-      throw new AssertionError(
-        `${assertion.path} = ${value}, expected > ${assertion.greaterThan}`,
-        {
-          path: assertion.path,
-          expected: `> ${assertion.greaterThan}`,
-          actual: value,
-          operator: 'greaterThan',
-        }
-      );
-    }
-
-    if (
-      assertion.lessThan !== undefined &&
-      Number(value) >= assertion.lessThan
-    ) {
-      throw new AssertionError(
-        `${assertion.path} = ${value}, expected < ${assertion.lessThan}`,
-        {
-          path: assertion.path,
-          expected: `< ${assertion.lessThan}`,
-          actual: value,
-          operator: 'lessThan',
-        }
-      );
-    }
+    runAssertion(value, assertion, assertion.path);
   }
 }

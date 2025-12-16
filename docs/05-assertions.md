@@ -35,8 +35,73 @@ assert:
     length: number
     greaterThan: number
     lessThan: number
+    notEmpty: boolean
+    isEmpty: boolean
     isNull: boolean
     isNotNull: boolean
+```
+
+---
+
+## JSONPath Syntax
+
+The JSON assertions support full JSONPath syntax for accessing nested values:
+
+### Basic Property Access
+
+```yaml
+assert:
+  json:
+    - path: "$.status"              # Root property
+      equals: "success"
+    - path: "$.data.user.name"      # Nested properties
+      equals: "John"
+```
+
+### Array Indexing
+
+Access specific array elements using bracket notation:
+
+```yaml
+assert:
+  json:
+    # Access first element of errors array
+    - path: "$.errors[0].code"
+      equals: 8006
+    - path: "$.errors[0].message"
+      contains: "already exists"
+
+    # Access nested arrays
+    - path: "$.data.items[0].tags[1]"
+      equals: "featured"
+
+    # Check array element exists
+    - path: "$.results[0]"
+      exists: true
+```
+
+### Wildcards
+
+Access all elements in an array:
+
+```yaml
+assert:
+  json:
+    # Get all names from items array
+    - path: "$.items[*].name"
+      contains: "Product"
+```
+
+### Recursive Descent
+
+Search for properties at any depth:
+
+```yaml
+assert:
+  json:
+    # Find 'id' property anywhere in the response
+    - path: "$..id"
+      exists: true
 ```
 
 ---
@@ -146,6 +211,21 @@ assert:
       greaterThan: 0
     - path: "$.discount"
       lessThan: 50
+```
+
+### `notEmpty` / `isEmpty`
+
+Check if array, string, or object is empty or not empty.
+
+```yaml
+assert:
+  json:
+    - path: "$.items"
+      notEmpty: true                   # Array/string/object must have elements
+    - path: "$.errors"
+      isEmpty: true                    # Array/string/object must be empty
+    - path: "$.name"
+      notEmpty: true                   # String must not be empty
 ```
 
 ### `isNull` / `isNotNull`
@@ -303,6 +383,37 @@ execute:
           exists: true
       duration:
         lessThan: 2000
+```
+
+### Error Response Assertions
+
+Check error responses with array indexing:
+
+```yaml
+execute:
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/users"
+    body:
+      email: "duplicate@example.com"
+    assert:
+      status: [400, 409]
+      json:
+        # Check errors array is not empty
+        - path: "$.errors"
+          type: "array"
+          notEmpty: true
+
+        # Access first error details
+        - path: "$.errors[0].code"
+          equals: 8006
+        - path: "$.errors[0].message"
+          contains: "already exists"
+
+        # Alternative: check error exists at index
+        - path: "$.errors[0]"
+          exists: true
 ```
 
 ### PostgreSQL Verification

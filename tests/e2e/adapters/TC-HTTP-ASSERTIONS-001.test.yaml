@@ -1,0 +1,89 @@
+name: TC-HTTP-ASSERTIONS-001
+description: Test array indexing and notEmpty/isEmpty assertions for HTTP adapter
+priority: P1
+tags: [http, assertions, json, array]
+timeout: 30000
+
+execute:
+  # Test array indexing on items array
+  - adapter: http
+    action: request
+    method: GET
+    url: "{{baseUrl}}/documents"
+    capture:
+      first_doc_id: "$.data[0].id"
+    assert:
+      status: 200
+      json:
+        # Test array indexing
+        - path: "$.data[0]"
+          exists: true
+        - path: "$.data[0].id"
+          exists: true
+          type: "string"
+        # Test notEmpty on array
+        - path: "$.data"
+          type: "array"
+          notEmpty: true
+
+  # Test creating a document and checking errors array on duplicate
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/documents"
+    headers:
+      Content-Type: "application/json"
+    body:
+      title: "Test Document {{$uuid()}}"
+      content: "Test content for assertions"
+      tags:
+        - "test"
+        - "assertions"
+    capture:
+      doc_id: "$.id"
+    assert:
+      status: 201
+      json:
+        - path: "$.id"
+          exists: true
+          notEmpty: true
+        - path: "$.tags"
+          type: "array"
+          notEmpty: true
+          length: 2
+        - path: "$.tags[0]"
+          equals: "test"
+        - path: "$.tags[1]"
+          equals: "assertions"
+
+  # Test isEmpty on empty array/object
+  - adapter: http
+    action: request
+    method: POST
+    url: "{{baseUrl}}/documents"
+    headers:
+      Content-Type: "application/json"
+    body:
+      title: "Empty Tags Test {{$uuid()}}"
+      content: "Document with empty tags"
+      tags: []
+    capture:
+      empty_doc_id: "$.id"
+    assert:
+      status: 201
+      json:
+        - path: "$.tags"
+          type: "array"
+          isEmpty: true
+
+teardown:
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/documents/{{captured.doc_id}}"
+    continueOnError: true
+  - adapter: http
+    action: request
+    method: DELETE
+    url: "{{baseUrl}}/documents/{{captured.empty_doc_id}}"
+    continueOnError: true

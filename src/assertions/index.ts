@@ -75,3 +75,17 @@ export {
     type ExpectFunction,
     fail,
 } from './expect'
+
+// ============================================================================
+// Assertion Runner Exports
+// ============================================================================
+
+export {
+    // Core function
+    runAssertion,
+    // Types
+    type BaseAssertion,
+    // Helpers
+    getValueLength,
+    getValueType,
+} from './assertion-runner'

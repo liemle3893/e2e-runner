@@ -7,20 +7,13 @@
 import { AdapterError, AssertionError } from '../errors';
 import type { AdapterConfig, AdapterContext, AdapterStepResult, Logger } from '../types';
 import { BaseAdapter } from './base.adapter';
+import { runAssertion, type BaseAssertion } from '../assertions/assertion-runner';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface RedisAssertion {
-  equals?: string | number;
-  isNull?: boolean;
-  isNotNull?: boolean;
-  greaterThan?: number;
-  lessThan?: number;
-  contains?: string;
-  length?: number;
-}
+export type RedisAssertion = BaseAssertion;
 
 // ============================================================================
 // Redis Adapter
@@ -162,7 +155,7 @@ export class RedisAdapter extends BaseAdapter {
 
       // Handle assertions
       if (params.assert) {
-        this.runAssertion(result, params.assert as RedisAssertion);
+        this.runRedisAssertion(result, params.assert as RedisAssertion);
       }
 
       this.logResult(action, true, duration);
@@ -214,78 +207,9 @@ export class RedisAdapter extends BaseAdapter {
   }
 
   /**
-   * Run assertion on Redis value
+   * Run assertion on Redis value using shared runner
    */
-  private runAssertion(value: unknown, assertion: RedisAssertion): void {
-    if (assertion.equals !== undefined && String(value) !== String(assertion.equals)) {
-      throw new AssertionError(
-        `Value = ${JSON.stringify(value)}, expected ${JSON.stringify(assertion.equals)}`,
-        {
-          expected: assertion.equals,
-          actual: value,
-          operator: 'equals',
-        }
-      );
-    }
-
-    if (assertion.isNull && value !== null) {
-      throw new AssertionError('Value is not null', {
-        actual: value,
-        operator: 'isNull',
-      });
-    }
-
-    if (assertion.isNotNull && value === null) {
-      throw new AssertionError('Value is null', {
-        operator: 'isNotNull',
-      });
-    }
-
-    if (assertion.greaterThan !== undefined && Number(value) <= assertion.greaterThan) {
-      throw new AssertionError(
-        `${value} is not > ${assertion.greaterThan}`,
-        {
-          expected: `> ${assertion.greaterThan}`,
-          actual: value,
-          operator: 'greaterThan',
-        }
-      );
-    }
-
-    if (assertion.lessThan !== undefined && Number(value) >= assertion.lessThan) {
-      throw new AssertionError(
-        `${value} is not < ${assertion.lessThan}`,
-        {
-          expected: `< ${assertion.lessThan}`,
-          actual: value,
-          operator: 'lessThan',
-        }
-      );
-    }
-
-    if (assertion.contains && !String(value).includes(assertion.contains)) {
-      throw new AssertionError(
-        `Value does not contain "${assertion.contains}"`,
-        {
-          expected: assertion.contains,
-          actual: value,
-          operator: 'contains',
-        }
-      );
-    }
-
-    if (assertion.length !== undefined) {
-      const actualLength = Array.isArray(value) ? value.length : String(value).length;
-      if (actualLength !== assertion.length) {
-        throw new AssertionError(
-          `Length = ${actualLength}, expected ${assertion.length}`,
-          {
-            expected: assertion.length,
-            actual: actualLength,
-            operator: 'length',
-          }
-        );
-      }
-    }
+  private runRedisAssertion(value: unknown, assertion: RedisAssertion): void {
+    runAssertion(value, assertion);
   }
 }

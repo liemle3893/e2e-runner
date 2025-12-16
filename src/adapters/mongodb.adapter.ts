@@ -7,21 +7,14 @@
 import { AdapterError, AssertionError } from '../errors';
 import type { AdapterConfig, AdapterContext, AdapterStepResult, Logger } from '../types';
 import { BaseAdapter } from './base.adapter';
+import { runAssertion, type BaseAssertion } from '../assertions/assertion-runner';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface MongoDBAssertion {
+export interface MongoDBAssertion extends BaseAssertion {
   path: string;
-  equals?: unknown;
-  contains?: string;
-  matches?: string;
-  isNull?: boolean;
-  isNotNull?: boolean;
-  exists?: boolean;
-  type?: string;
-  length?: number;
 }
 
 // ============================================================================
@@ -257,112 +250,12 @@ export class MongoDBAdapter extends BaseAdapter {
   }
 
   /**
-   * Run assertions on MongoDB result
+   * Run assertions on MongoDB result using shared runner
    */
   private runAssertions(data: unknown, assertions: MongoDBAssertion[]): void {
     for (const assertion of assertions) {
       const value = this.getNestedValue(data, assertion.path);
-
-      if (assertion.exists === true && value === undefined) {
-        throw new AssertionError(`${assertion.path} does not exist`, {
-          path: assertion.path,
-          operator: 'exists',
-        });
-      }
-
-      if (assertion.exists === false && value !== undefined) {
-        throw new AssertionError(`${assertion.path} exists but should not`, {
-          path: assertion.path,
-          actual: value,
-          operator: 'notExists',
-        });
-      }
-
-      if (assertion.equals !== undefined && value !== assertion.equals) {
-        // Handle ObjectId comparison
-        const actualStr = value?.toString ? value.toString() : value;
-        const expectedStr = assertion.equals?.toString
-          ? assertion.equals.toString()
-          : assertion.equals;
-
-        if (actualStr !== expectedStr) {
-          throw new AssertionError(
-            `${assertion.path} = ${JSON.stringify(value)}, expected ${JSON.stringify(assertion.equals)}`,
-            {
-              path: assertion.path,
-              expected: assertion.equals,
-              actual: value,
-              operator: 'equals',
-            }
-          );
-        }
-      }
-
-      if (assertion.isNull && value !== null) {
-        throw new AssertionError(`${assertion.path} is not null`, {
-          path: assertion.path,
-          actual: value,
-          operator: 'isNull',
-        });
-      }
-
-      if (assertion.isNotNull && value === null) {
-        throw new AssertionError(`${assertion.path} is null`, {
-          path: assertion.path,
-          operator: 'isNotNull',
-        });
-      }
-
-      if (assertion.contains && !String(value).includes(assertion.contains)) {
-        throw new AssertionError(
-          `${assertion.path} does not contain "${assertion.contains}"`,
-          {
-            path: assertion.path,
-            expected: assertion.contains,
-            actual: value,
-            operator: 'contains',
-          }
-        );
-      }
-
-      if (assertion.matches && !new RegExp(assertion.matches).test(String(value))) {
-        throw new AssertionError(
-          `${assertion.path} does not match /${assertion.matches}/`,
-          {
-            path: assertion.path,
-            expected: assertion.matches,
-            actual: value,
-            operator: 'matches',
-          }
-        );
-      }
-
-      if (assertion.type && typeof value !== assertion.type) {
-        throw new AssertionError(
-          `${assertion.path} type is ${typeof value}, expected ${assertion.type}`,
-          {
-            path: assertion.path,
-            expected: assertion.type,
-            actual: typeof value,
-            operator: 'type',
-          }
-        );
-      }
-
-      if (assertion.length !== undefined) {
-        const actualLength = Array.isArray(value) ? value.length : -1;
-        if (actualLength !== assertion.length) {
-          throw new AssertionError(
-            `${assertion.path} length is ${actualLength}, expected ${assertion.length}`,
-            {
-              path: assertion.path,
-              expected: assertion.length,
-              actual: actualLength,
-              operator: 'length',
-            }
-          );
-        }
-      }
+      runAssertion(value, assertion, assertion.path);
     }
   }
 }

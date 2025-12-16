@@ -7,21 +7,15 @@
 import { AdapterError, AssertionError } from '../errors';
 import type { AdapterConfig, AdapterContext, AdapterStepResult, Logger } from '../types';
 import { BaseAdapter } from './base.adapter';
+import { runAssertion, type BaseAssertion } from '../assertions/assertion-runner';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface PostgreSQLAssertion {
+export interface PostgreSQLAssertion extends BaseAssertion {
   row?: number;
   column: string;
-  equals?: unknown;
-  contains?: string;
-  matches?: string;
-  isNull?: boolean;
-  isNotNull?: boolean;
-  greaterThan?: number;
-  lessThan?: number;
 }
 
 // ============================================================================
@@ -268,100 +262,24 @@ export class PostgreSQLAdapter extends BaseAdapter {
   }
 
   /**
-   * Run assertions on query results
+   * Run assertions on query results using shared runner
    */
   private runAssertions(rows: Record<string, unknown>[], assertions: PostgreSQLAssertion[]): void {
     for (const assertion of assertions) {
       const rowIndex = assertion.row ?? 0;
+      const path = `row[${rowIndex}].${assertion.column}`;
 
-      if (rowIndex >= rows.length) {
-        throw new AssertionError(
-          `Row ${rowIndex} does not exist (only ${rows.length} rows)`,
-          {
-            expected: `row ${rowIndex}`,
-            actual: `${rows.length} rows`,
-            operator: 'rowExists',
-          }
+      // Check row exists
+      if (assertion.exists !== false && rowIndex >= rows.length) {
+        throw new AdapterError(
+          'postgresql',
+          'assertion',
+          `Row ${rowIndex} does not exist (only ${rows.length} rows)`
         );
       }
 
-      const value = rows[rowIndex][assertion.column];
-
-      if (assertion.equals !== undefined && value !== assertion.equals) {
-        throw new AssertionError(
-          `${assertion.column} = ${JSON.stringify(value)}, expected ${JSON.stringify(assertion.equals)}`,
-          {
-            path: `row[${rowIndex}].${assertion.column}`,
-            expected: assertion.equals,
-            actual: value,
-            operator: 'equals',
-          }
-        );
-      }
-
-      if (assertion.isNull && value !== null) {
-        throw new AssertionError(`${assertion.column} is not null`, {
-          path: `row[${rowIndex}].${assertion.column}`,
-          expected: null,
-          actual: value,
-          operator: 'isNull',
-        });
-      }
-
-      if (assertion.isNotNull && value === null) {
-        throw new AssertionError(`${assertion.column} is null`, {
-          path: `row[${rowIndex}].${assertion.column}`,
-          operator: 'isNotNull',
-        });
-      }
-
-      if (assertion.contains && !String(value).includes(assertion.contains)) {
-        throw new AssertionError(
-          `${assertion.column} does not contain "${assertion.contains}"`,
-          {
-            path: `row[${rowIndex}].${assertion.column}`,
-            expected: assertion.contains,
-            actual: value,
-            operator: 'contains',
-          }
-        );
-      }
-
-      if (assertion.matches && !new RegExp(assertion.matches).test(String(value))) {
-        throw new AssertionError(
-          `${assertion.column} does not match /${assertion.matches}/`,
-          {
-            path: `row[${rowIndex}].${assertion.column}`,
-            expected: assertion.matches,
-            actual: value,
-            operator: 'matches',
-          }
-        );
-      }
-
-      if (assertion.greaterThan !== undefined && Number(value) <= assertion.greaterThan) {
-        throw new AssertionError(
-          `${assertion.column} = ${value}, expected > ${assertion.greaterThan}`,
-          {
-            path: `row[${rowIndex}].${assertion.column}`,
-            expected: `> ${assertion.greaterThan}`,
-            actual: value,
-            operator: 'greaterThan',
-          }
-        );
-      }
-
-      if (assertion.lessThan !== undefined && Number(value) >= assertion.lessThan) {
-        throw new AssertionError(
-          `${assertion.column} = ${value}, expected < ${assertion.lessThan}`,
-          {
-            path: `row[${rowIndex}].${assertion.column}`,
-            expected: `< ${assertion.lessThan}`,
-            actual: value,
-            operator: 'lessThan',
-          }
-        );
-      }
+      const value = rowIndex < rows.length ? rows[rowIndex][assertion.column] : undefined;
+      runAssertion(value, assertion, path);
     }
   }
 
