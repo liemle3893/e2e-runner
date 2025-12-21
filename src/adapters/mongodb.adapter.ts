@@ -103,19 +103,19 @@ export class MongoDBAdapter extends BaseAdapter {
         }
 
         case 'findOne': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           result = await collection.findOne(filter);
           break;
         }
 
         case 'find': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           result = await collection.find(filter).toArray();
           break;
         }
 
         case 'updateOne': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           const update = params.update as Record<string, unknown>;
           const updateResult = await collection.updateOne(filter, update);
           result = {
@@ -126,7 +126,7 @@ export class MongoDBAdapter extends BaseAdapter {
         }
 
         case 'updateMany': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           const update = params.update as Record<string, unknown>;
           const updateManyResult = await collection.updateMany(filter, update);
           result = {
@@ -137,21 +137,21 @@ export class MongoDBAdapter extends BaseAdapter {
         }
 
         case 'deleteOne': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           const deleteResult = await collection.deleteOne(filter);
           result = { deletedCount: deleteResult.deletedCount };
           break;
         }
 
         case 'deleteMany': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown>);
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown>);
           const deleteManyResult = await collection.deleteMany(filter);
           result = { deletedCount: deleteManyResult.deletedCount };
           break;
         }
 
         case 'count': {
-          const filter = this.normalizeFilter(params.filter as Record<string, unknown> || {});
+          const filter = await this.normalizeFilter(params.filter as Record<string, unknown> || {});
           result = await collection.countDocuments(filter);
           break;
         }

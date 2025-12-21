@@ -1,0 +1,116 @@
+name: TC-MONGODB-FINDONE-FILTER
+description: MongoDB adapter test - Prove findOne with filter support
+priority: P0
+tags: [mongodb, adapter, findOne, filter, e2e]
+timeout: 30000
+
+variables:
+  unique_email: "findone-test-{{$uuid()}}@example.com"
+  test_name: "FindOne Filter Test User"
+
+setup:
+  # Clean up any existing test documents
+  - adapter: mongodb
+    action: deleteMany
+    collection: "test_users"
+    filter:
+      test_marker: "findone-filter-test"
+
+execute:
+  # Step 1: Insert multiple test documents
+  - adapter: mongodb
+    action: insertMany
+    collection: "test_users"
+    documents:
+      - email: "{{unique_email}}"
+        name: "{{test_name}}"
+        role: "admin"
+        active: true
+        test_marker: "findone-filter-test"
+      - email: "other-user-{{$uuid()}}@example.com"
+        name: "Other User"
+        role: "user"
+        active: true
+        test_marker: "findone-filter-test"
+      - email: "inactive-{{$uuid()}}@example.com"
+        name: "Inactive User"
+        role: "admin"
+        active: false
+        test_marker: "findone-filter-test"
+
+  # Step 2: findOne with simple string filter
+  - adapter: mongodb
+    action: findOne
+    collection: "test_users"
+    filter:
+      email: "{{unique_email}}"
+    capture:
+      found_user_id: "_id"
+      found_user_name: "name"
+    assert:
+      - path: "email"
+        equals: "{{unique_email}}"
+      - path: "name"
+        equals: "{{test_name}}"
+
+  # Step 3: findOne with role filter (use unique name to be deterministic)
+  - adapter: mongodb
+    action: findOne
+    collection: "test_users"
+    filter:
+      name: "Other User"
+      test_marker: "findone-filter-test"
+    assert:
+      - path: "name"
+        equals: "Other User"
+      - path: "role"
+        equals: "user"
+
+  # Step 4: findOne with boolean filter
+  - adapter: mongodb
+    action: findOne
+    collection: "test_users"
+    filter:
+      name: "Inactive User"
+      active: false
+      test_marker: "findone-filter-test"
+    assert:
+      - path: "name"
+        equals: "Inactive User"
+      - path: "active"
+        equals: false
+
+  # Step 5: findOne with multiple conditions (AND)
+  - adapter: mongodb
+    action: findOne
+    collection: "test_users"
+    filter:
+      role: "admin"
+      active: true
+      test_marker: "findone-filter-test"
+    assert:
+      - path: "email"
+        equals: "{{unique_email}}"
+      - path: "role"
+        equals: "admin"
+      - path: "active"
+        equals: true
+
+verify:
+  # Verify captured _id can be used in another findOne
+  - adapter: mongodb
+    action: findOne
+    collection: "test_users"
+    filter:
+      _id: "{{captured.found_user_id}}"
+    assert:
+      - path: "name"
+        equals: "{{captured.found_user_name}}"
+
+teardown:
+  # Clean up test documents
+  - adapter: mongodb
+    action: deleteMany
+    collection: "test_users"
+    filter:
+      test_marker: "findone-filter-test"
