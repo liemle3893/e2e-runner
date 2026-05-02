@@ -115,13 +115,16 @@ func builtinRandomString(args ...string) (string, error) {
 }
 
 // builtinEnv returns the value of the named environment variable.
-// Returns an error if the variable is not set.
+// Accepts an optional second argument as a default value when the variable is not set.
 func builtinEnv(args ...string) (string, error) {
-	if len(args) != 1 || args[0] == "" {
-		return "", fmt.Errorf("env: expected 1 argument (variable name)")
+	if len(args) < 1 || len(args) > 2 || args[0] == "" {
+		return "", fmt.Errorf("env: expected 1-2 arguments (variable name[, default])")
 	}
 	val, ok := os.LookupEnv(args[0])
 	if !ok {
+		if len(args) == 2 {
+			return args[1], nil
+		}
 		return "", fmt.Errorf("env: variable %q is not set", args[0])
 	}
 	return val, nil

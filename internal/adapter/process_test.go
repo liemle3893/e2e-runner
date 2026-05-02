@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/liemle3893/go-tryve/internal/adapter"
 )
@@ -245,7 +244,7 @@ func TestProcessAdapter_AutoTeardownFalse(t *testing.T) {
 	a := adapter.NewProcessAdapter()
 	ctx := context.Background()
 
-	result, err := a.Execute(ctx, "start", map[string]any{
+	_, err := a.Execute(ctx, "start", map[string]any{
 		"command":       "sleep 60",
 		"name":          "no-auto-teardown",
 		"auto_teardown": false,
@@ -254,16 +253,8 @@ func TestProcessAdapter_AutoTeardownFalse(t *testing.T) {
 		t.Fatalf("start failed: %v", err)
 	}
 
-	// Close should NOT stop this process since auto_teardown is false.
-	_ = a.Close(ctx)
-
-	// Give a moment for Close to complete.
-	time.Sleep(100 * time.Millisecond)
-
-	// Clean up manually — stop by PID since manager no longer tracks it after StopAll skips it.
-	pid := int(result.Data["pid"].(float64))
-	_, _ = a.Execute(ctx, "stop", map[string]any{
-		"pid":     float64(pid),
-		"timeout": "2s",
-	})
+	// Close should stop ALL processes (including auto_teardown: false) to prevent leaks.
+	if err := a.Close(ctx); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
 }

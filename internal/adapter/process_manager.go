@@ -159,10 +159,21 @@ func (pm *ProcessManager) StopByPID(pid int, sig syscall.Signal, timeout time.Du
 // StopAll terminates all tracked processes that have AutoTeardown set, using each
 // process's individual TeardownTimeout.
 func (pm *ProcessManager) StopAll() {
+	pm.stopProcesses(false)
+}
+
+// ForceStopAll terminates all tracked processes regardless of AutoTeardown.
+func (pm *ProcessManager) ForceStopAll() {
+	pm.stopProcesses(true)
+}
+
+// stopProcesses terminates tracked processes. When forceAll is true, all processes
+// are stopped; otherwise only those with AutoTeardown set.
+func (pm *ProcessManager) stopProcesses(forceAll bool) {
 	pm.mu.Lock()
 	names := make([]string, 0, len(pm.processes))
 	for name, proc := range pm.processes {
-		if proc.AutoTeardown {
+		if forceAll || proc.AutoTeardown {
 			names = append(names, name)
 		}
 	}
@@ -218,8 +229,12 @@ func killProcess(proc *ManagedProcess, sig syscall.Signal, timeout time.Duration
 		return nil
 	case <-time.After(timeout):
 		_ = syscall.Kill(-proc.PID, syscall.SIGKILL)
-		<-proc.done
-		return nil
+		select {
+		case <-proc.done:
+			return nil
+		case <-time.After(5 * time.Second):
+			return fmt.Errorf("process %q (PID %d) did not exit after SIGKILL", proc.Name, proc.PID)
+		}
 	}
 }
 

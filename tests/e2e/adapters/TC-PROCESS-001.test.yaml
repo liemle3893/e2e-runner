@@ -1,0 +1,52 @@
+name: TC-PROCESS-001
+description: Process adapter test - start, capture PID/port, readiness probe, stop
+priority: P0
+tags: [process, adapter, e2e]
+timeout: 30000
+
+setup:
+  - name: api-server
+    adapter: process
+    action: start
+    command: "python3 -m http.server {{free_port}}"
+    readiness:
+      http: "http://127.0.0.1:{{free_port}}/"
+      timeout: "10s"
+      interval: "200ms"
+    capture:
+      pid: "$.pid"
+      port: "$.port"
+
+execute:
+  - id: verify_pid_captured
+    adapter: shell
+    action: exec
+    command: "test {{captured.api-server.pid}} -gt 0 && echo ok"
+    assert:
+      exitCode: 0
+      stdout:
+        contains: "ok"
+
+  - id: verify_port_captured
+    adapter: shell
+    action: exec
+    command: "test {{captured.api-server.port}} -gt 1023 && echo ok"
+    assert:
+      exitCode: 0
+      stdout:
+        contains: "ok"
+
+  - id: http_request_to_process
+    adapter: http
+    action: request
+    url: "http://127.0.0.1:{{captured.api-server.port}}/"
+    method: GET
+    assert:
+      status: 200
+
+teardown:
+  - id: stop_server
+    adapter: process
+    action: stop
+    target: "api-server"
+    timeout: "5s"

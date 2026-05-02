@@ -161,6 +161,7 @@ Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting de
 "{{$lower(value)}}"                # Lowercase
 "{{$upper(value)}}"                # Uppercase
 "{{$trim(value)}}"                 # Trim whitespace
+"{{$freePort()}}"                  # Allocate available TCP port
 
 # Variable cross-references (resolved in dependency order)
 base_id: "TEST"

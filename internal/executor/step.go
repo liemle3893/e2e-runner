@@ -94,6 +94,12 @@ func ExecuteStep(
 		return failedOutcome(step, tryve.InterpolationError(step.Action, err.Error()), elapsed), nil
 	}
 
+	// Inject step.Name into resolvedParams so adapters that require it (e.g. process)
+	// can read it from params after the parser extracts it as a first-class field.
+	if step.Name != "" {
+		resolvedParams["name"] = step.Name
+	}
+
 	// 3. Get adapter from registry (connects lazily on first access).
 	adp, err := registry.Get(ctx, step.Adapter)
 	if err != nil {

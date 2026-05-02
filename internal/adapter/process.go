@@ -30,9 +30,9 @@ func (a *ProcessAdapter) Name() string { return "process" }
 // Connect is a no-op; the process adapter requires no persistent connection.
 func (a *ProcessAdapter) Connect(_ context.Context) error { return nil }
 
-// Close terminates all tracked background processes.
+// Close terminates all tracked background processes regardless of AutoTeardown.
 func (a *ProcessAdapter) Close(_ context.Context) error {
-	a.manager.StopAll()
+	a.manager.ForceStopAll()
 	return nil
 }
 
@@ -111,34 +111,42 @@ func (a *ProcessAdapter) startAction(ctx context.Context, params map[string]any)
 		TeardownTimeout: teardownTimeout,
 	}
 
-	proc, err := a.manager.Start(ctx, opts)
-	if err != nil {
-		return nil, tryve.AdapterError("process", "start", err.Error(), err)
-	}
-
-	// Readiness probe.
-	if readinessMap != nil {
-		cfg := parseReadinessConfig(readinessMap)
-		if err := WaitForReady(ctx, cfg, proc.Done()); err != nil {
-			_ = a.manager.Stop(name, syscall.SIGKILL, 2*time.Second)
-			stderr := proc.Stderr()
-			stdout := proc.Stdout()
-			msg := fmt.Sprintf("readiness probe failed for %q: %v", name, err)
-			if stderr != "" {
-				msg += "\nstderr: " + truncate(stderr, 500)
-			}
-			if stdout != "" {
-				msg += "\nstdout: " + truncate(stdout, 500)
-			}
-			return nil, tryve.AdapterError("process", "start", msg, err)
+	var proc *ManagedProcess
+	duration, startErr := MeasureDuration(func() error {
+		var e error
+		proc, e = a.manager.Start(ctx, opts)
+		if e != nil {
+			return e
 		}
+
+		// Readiness probe.
+		if readinessMap != nil {
+			cfg := parseReadinessConfig(readinessMap)
+			if e = WaitForReady(ctx, cfg, proc.Done()); e != nil {
+				_ = a.manager.Stop(name, syscall.SIGKILL, 2*time.Second)
+				stderr := proc.Stderr()
+				stdout := proc.Stdout()
+				msg := fmt.Sprintf("readiness probe failed for %q: %v", name, e)
+				if stderr != "" {
+					msg += "\nstderr: " + truncate(stderr, 500)
+				}
+				if stdout != "" {
+					msg += "\nstdout: " + truncate(stdout, 500)
+				}
+				return fmt.Errorf("%s", msg)
+			}
+		}
+		return nil
+	})
+	if startErr != nil {
+		return nil, tryve.AdapterError("process", "start", startErr.Error(), startErr)
 	}
 
 	data := map[string]any{
 		"pid":  float64(proc.PID),
 		"port": float64(port),
 	}
-	return SuccessResult(data, 0, nil), nil
+	return SuccessResult(data, duration, nil), nil
 }
 
 // stopAction terminates a background process by name or PID.
@@ -153,11 +161,14 @@ func (a *ProcessAdapter) stopAction(params map[string]any) (*tryve.StepResult, e
 
 	target := getStrDefault(params, "target", "")
 	if target != "" {
-		if err := a.manager.Stop(target, sig, timeout); err != nil {
-			return nil, tryve.AdapterError("process", "stop", err.Error(), err)
+		duration, stopErr := MeasureDuration(func() error {
+			return a.manager.Stop(target, sig, timeout)
+		})
+		if stopErr != nil {
+			return nil, tryve.AdapterError("process", "stop", stopErr.Error(), stopErr)
 		}
 		data := map[string]any{"stopped": target}
-		return SuccessResult(data, 0, nil), nil
+		return SuccessResult(data, duration, nil), nil
 	}
 
 	// Fall back to PID-based stop.
@@ -172,11 +183,14 @@ func (a *ProcessAdapter) stopAction(params map[string]any) (*tryve.StepResult, e
 			fmt.Sprintf("invalid pid value: %v", err), err)
 	}
 
-	if err := a.manager.StopByPID(pid, sig, timeout); err != nil {
-		return nil, tryve.AdapterError("process", "stop", err.Error(), err)
+	duration, stopErr := MeasureDuration(func() error {
+		return a.manager.StopByPID(pid, sig, timeout)
+	})
+	if stopErr != nil {
+		return nil, tryve.AdapterError("process", "stop", stopErr.Error(), stopErr)
 	}
 	data := map[string]any{"stopped": float64(pid)}
-	return SuccessResult(data, 0, nil), nil
+	return SuccessResult(data, duration, nil), nil
 }
 
 // allocateFreePort binds to a random port and returns it.

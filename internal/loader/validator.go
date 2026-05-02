@@ -127,7 +127,7 @@ func validateStep(ref string, step *tryve.StepDefinition) []error {
 	if _, ok := validAdapters[step.Adapter]; !ok {
 		errs = append(errs, tryve.ValidationError(
 			fmt.Sprintf("step %s: unknown adapter %q", ref, step.Adapter),
-			fmt.Sprintf("use one of: http, postgresql, mongodb, redis, kafka, eventhub, shell"),
+			fmt.Sprintf("use one of: http, postgresql, mongodb, redis, kafka, eventhub, shell, process"),
 			nil,
 		))
 		// No further per-adapter checks possible without a valid adapter.
