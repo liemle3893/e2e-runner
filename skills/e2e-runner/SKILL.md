@@ -140,7 +140,8 @@ Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting de
 "{{baseUrl}}"
 
 # Environment variables
-"{{$env(API_KEY)}}"
+"{{$env(API_KEY)}}"                 # Required (errors if not set)
+"{{$env(API_KEY, default_value)}}"  # With default (returns default if not set)
 
 # Built-in functions
 "{{$uuid()}}"                       # UUID v4

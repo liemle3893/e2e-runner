@@ -127,14 +127,15 @@ variables:
 
 ## Environment Functions
 
-### `$env(varName)`
+### `$env(varName)` / `$env(varName, default)`
 
-Read environment variable.
+Read environment variable. When a default is provided, returns the default value instead of erroring if the variable is not set.
 
 ```yaml
 variables:
   api_key: "{{$env(API_KEY)}}"
   db_url: "{{$env(DATABASE_URL)}}"
+  root_url: "{{$env(ROOT_URL, http://localhost:8080)}}"
 
 execute:
   - adapter: http
@@ -473,7 +474,7 @@ execute:
 | `$isoDate()` | none | ISO date | `2024-12-21T10:30:00.000Z` |
 | `$random(min, max)` | 2 numbers | Random int | `4523` |
 | `$randomString(len)` | number | Random string | `aB3dF7gH...` |
-| `$env(name)` | string | Env variable | `value` |
+| `$env(name[, default])` | string | Env variable | `value` |
 | `$file(path)` | string | File contents | `{...}` |
 | `$base64(value)` | string | Base64 encode | `SGVsbG8=` |
 | `$base64Decode(value)` | string | Base64 decode | `Hello` |
