@@ -32,7 +32,7 @@ autoflow e2e doc assertions                      # Assertions reference
 autoflow e2e doc adapters.http                   # HTTP adapter docs
 
 # Install
-autoflow install --skills                    # Install e2e-runner Claude skill
+autoflow install --skills                    # Install autoflow-cli Claude skill
 autoflow install --autoflow                  # Install autoflow skills + agents
                                           # (auto-cleans legacy .claude/scripts/autoflow/)
 
@@ -78,20 +78,20 @@ Every change to CLI commands, adapters, configuration, assertions, built-in func
 
 1. **Docs** — `docs/sections/` markdown files
 2. **CLI doc registry** — `docs/sections/index.json` (maps section names to files for `autoflow e2e doc <section>`)
-3. **Skill template** — `skills/e2e-runner/SKILL.md` (the source skill file shipped with the binary)
+3. **Skill template** — `skills/autoflow-cli/SKILL.md` (the source skill file shipped with the binary)
 
 ### How Skills Are Installed
 
 `autoflow install --skills` (see `internal/cli/install.go`) copies files to the user's project:
-- `skills/e2e-runner/SKILL.md` → `.claude/skills/e2e-runner/SKILL.md`
-- `docs/sections/**` → `.claude/skills/e2e-runner/references/**`
+- `skills/autoflow-cli/SKILL.md` → `.claude/skills/autoflow-cli/SKILL.md`
+- `docs/sections/**` → `.claude/skills/autoflow-cli/references/**`
 
 `autoflow install --autoflow` copies:
 - `skills/autoflow/**` → `.claude/skills/autoflow-*/`
 - `agents/autoflow/**` → `.claude/agents/autoflow-*.md`
 - Removes any legacy `.claude/scripts/autoflow/` directory left by the old bash installer.
 
-**Always edit the sources** — `skills/e2e-runner/SKILL.md`, `skills/autoflow/**`, `agents/autoflow/**`. Never edit `.claude/...` directly; those are generated output.
+**Always edit the sources** — `skills/autoflow-cli/SKILL.md`, `skills/autoflow/**`, `agents/autoflow/**`. Never edit `.claude/...` directly; those are generated output.
 
 Relevant doc files:
 - `docs/sections/cli.md` — CLI commands and flags
@@ -117,7 +117,7 @@ When adding a new adapter, **all** of these files must be created or updated:
 | `docs/sections/adapters/<name>.md` | Create full adapter documentation |
 | `docs/sections/adapters/index.md` | Add to adapter table and peer deps section |
 | `docs/sections/index.json` | Register `adapters.<name>` |
-| `skills/e2e-runner/SKILL.md` | Add adapter to syntax reference and links |
+| `skills/autoflow-cli/SKILL.md` | Add adapter to syntax reference and links |
 | `internal/adapter/<name>_test.go` | Unit tests |
 | `tests/e2e/adapters/TC-<NAME>-001.test.yaml` | E2E integration test |
 

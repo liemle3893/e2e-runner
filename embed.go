@@ -5,10 +5,10 @@ package assets
 
 import "embed"
 
-// SkillsFS contains the skills/e2e-runner/ directory, including SKILL.md and
+// SkillsFS contains the skills/autoflow-cli/ directory, including SKILL.md and
 // any future sub-directories.
 //
-//go:embed skills/e2e-runner
+//go:embed skills/autoflow-cli
 var SkillsFS embed.FS
 
 // DocsSectionsFS contains the docs/sections/ directory (markdown references

@@ -22,7 +22,7 @@ func newInstallCmd() *cobra.Command {
 		Short: "Install Claude Code skills into the current project",
 		Long: `Install the bundled Claude Code assets into the current project.
 
-  --skills     e2e-runner skill into .claude/skills/e2e-runner/
+  --skills     autoflow-cli skill into .claude/skills/autoflow-cli/
   --autoflow   autoflow skills + agents into .claude/{skills,agents}/,
                and auto-clean any legacy .claude/scripts/autoflow/ dir.
 
@@ -31,7 +31,7 @@ Both flags may be combined. Without flags, prints usage.`,
 		RunE: installCmdHandler,
 	}
 
-	cmd.Flags().Bool("skills", false, "install e2e-runner skill")
+	cmd.Flags().Bool("skills", false, "install autoflow-cli skill")
 	cmd.Flags().Bool("autoflow", false, "install autoflow skills + agents")
 	return cmd
 }
@@ -45,7 +45,7 @@ func installCmdHandler(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintln(out, "Usage: autoflow install [--skills] [--autoflow]")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Options:")
-		fmt.Fprintln(out, "  --skills     install e2e-runner skill to .claude/skills/e2e-runner/")
+		fmt.Fprintln(out, "  --skills     install autoflow-cli skill to .claude/skills/autoflow-cli/")
 		fmt.Fprintln(out, "  --autoflow   install autoflow skills + agents to .claude/{skills,agents}/")
 		return nil
 	}
@@ -68,14 +68,14 @@ func installCmdHandler(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// installSkills copies the e2e-runner skill + doc references (previous
+// installSkills copies the autoflow-cli skill + doc references (previous
 // default behaviour of `--skills`).
 func installSkills(cmd *cobra.Command, cwd string) error {
-	destDir := filepath.Join(cwd, ".claude", "skills", "e2e-runner")
+	destDir := filepath.Join(cwd, ".claude", "skills", "autoflow-cli")
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return fmt.Errorf("install: creating %s: %w", destDir, err)
 	}
-	if err := copyEmbedDir(assets.SkillsFS, "skills/e2e-runner", destDir, nil); err != nil {
+	if err := copyEmbedDir(assets.SkillsFS, "skills/autoflow-cli", destDir, nil); err != nil {
 		return fmt.Errorf("install: copying skill bundle: %w", err)
 	}
 	refsDir := filepath.Join(destDir, "references")

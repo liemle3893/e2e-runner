@@ -55,6 +55,7 @@ e2e run [options] [patterns...]
 | `--skip-setup` | Skip setup phase | `false` |
 | `--skip-teardown` | Skip teardown phase | `false` |
 | `--dry-run` | List tests without execution | `false` |
+| `--failed-only` | Rerun only previously failed tests | `false` |
 | `--reporter <type>` | Reporter type (repeatable) | `console` |
 | `-o, --output <path>` | Report output path | |
 | `--debug` | Enable debug logging | `false` |
@@ -522,7 +523,7 @@ e2e install --skills
 
 | Option | Description |
 |--------|-------------|
-| `--skills` | Install Claude Code skills to `.claude/skills/e2e-runner/` |
+| `--skills` | Install Claude Code skills to `.claude/skills/autoflow-cli/` |
 
 When invoked without `--skills`, the command prints usage help.
 
@@ -530,8 +531,8 @@ When invoked without `--skills`, the command prints usage help.
 
 Running `e2e install --skills` copies the following into your project:
 
-- `.claude/skills/e2e-runner/SKILL.md` -- The main skill bundle file
-- `.claude/skills/e2e-runner/references/` -- All documentation section files (mirrors `docs/sections/`)
+- `.claude/skills/autoflow-cli/SKILL.md` -- The main skill bundle file
+- `.claude/skills/autoflow-cli/references/` -- All documentation section files (mirrors `docs/sections/`)
 
 The `references/` directory contains the same markdown files available via `e2e doc`, allowing Claude Code to reference them directly as skill context.
 

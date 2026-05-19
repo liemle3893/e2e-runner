@@ -49,15 +49,15 @@ Every change to CLI commands, adapters, configuration, assertions, built-in func
 
 1. **Docs** — `docs/sections/` markdown files
 2. **CLI doc registry** — `docs/sections/index.json` (maps section names to files for `e2e doc <section>`)
-3. **Skill template** — `skills/e2e-runner/SKILL.md` (the source skill file shipped with the package)
+3. **Skill template** — `skills/autoflow-cli/SKILL.md` (the source skill file shipped with the package)
 
 ### How Skills Are Installed
 
 `e2e install --skills` (see `src/cli/install.command.ts`) copies files to the user's project:
-- `skills/e2e-runner/SKILL.md` → `.claude/skills/e2e-runner/SKILL.md`
-- `docs/sections/**` → `.claude/skills/e2e-runner/references/**`
+- `skills/autoflow-cli/SKILL.md` → `.claude/skills/autoflow-cli/SKILL.md`
+- `docs/sections/**` → `.claude/skills/autoflow-cli/references/**`
 
-**Always edit `skills/e2e-runner/SKILL.md`** — this is the source of truth. Never edit `.claude/skills/` directly; those are generated output. The reference files under `.claude/skills/e2e-runner/references/` come from `docs/sections/` automatically at install time, so updating docs is sufficient for references.
+**Always edit `skills/autoflow-cli/SKILL.md`** — this is the source of truth. Never edit `.claude/skills/` directly; those are generated output. The reference files under `.claude/skills/autoflow-cli/references/` come from `docs/sections/` automatically at install time, so updating docs is sufficient for references.
 
 ### Relevant doc files
 
@@ -85,7 +85,7 @@ When adding a new adapter, **all** of these files must be created or updated:
 | `docs/sections/adapters/<name>.md` | Create full adapter documentation |
 | `docs/sections/adapters/index.md` | Add to adapter table and peer deps section |
 | `docs/sections/index.json` | Register `adapters.<name>` section for CLI `doc` command |
-| `skills/e2e-runner/SKILL.md` | Add adapter to syntax reference and links (source template) |
+| `skills/autoflow-cli/SKILL.md` | Add adapter to syntax reference and links (source template) |
 | `tests/unit/<name>-adapter.test.ts` | Unit tests |
 | `tests/e2e/adapters/TC-<NAME>-001.test.yaml` | E2E integration test |
 

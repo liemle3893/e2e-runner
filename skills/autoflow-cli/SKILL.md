@@ -1,5 +1,5 @@
 ---
-name: e2e-runner
+name: autoflow-cli
 description: This skill should be used when writing E2E tests for APIs and databases using the autoflow e2e test runner. Use when creating YAML test files, configuring adapters (HTTP, Shell, PostgreSQL, MongoDB, Redis, EventHub, Kafka), writing assertions, or running tests. Provides complete syntax reference for YAML tests, assertion operators, variable interpolation, and built-in functions.
 ---
 
@@ -40,7 +40,7 @@ Run with: `autoflow e2e run --env local`
 | `autoflow e2e test create <name>` | Create test from template (`--template http\|shell`) |
 | `autoflow e2e test list-templates` | List available templates |
 | `autoflow e2e doc [section]` | Show documentation for a section |
-| `autoflow install --skills` | Install Claude Code skills to `.claude/skills/e2e-runner/` |
+| `autoflow install --skills` | Install Claude Code skills to `.claude/skills/autoflow-cli/` |
 | `autoflow version` | Print version |
 
 ### `autoflow e2e run` Options
@@ -63,6 +63,7 @@ Run with: `autoflow e2e run --env local`
 | `--verbose` | Show per-step output |
 | `--debug` | Show full request/response data |
 | `--watch` | Re-run tests on file changes |
+| `--failed-only` | Rerun only previously failed tests |
 
 Global flags: `--config, -c` (config file path), `--env, -e` (environment name)
 
