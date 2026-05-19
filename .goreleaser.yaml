@@ -44,6 +44,6 @@ changelog:
 release:
   github:
     owner: liemle3893
-    name: autoflow
+    name: go-tryve
   draft: false
   prerelease: auto
