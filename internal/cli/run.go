@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -44,6 +46,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().Bool("verbose", false, "enable verbose per-step output")
 	cmd.Flags().Bool("debug", false, "show full request/response data for every step")
 	cmd.Flags().Bool("watch", false, "re-run tests on file changes")
+	cmd.Flags().Bool("failed-only", false, "re-run only tests that failed in the previous run")
 
 	return cmd
 }
@@ -75,6 +78,7 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	reporterTypes, _ := cmd.Flags().GetStringSlice("reporter")
 	outputPath, _ := cmd.Flags().GetString("output")
 	watchMode, _ := cmd.Flags().GetBool("watch")
+	failedOnly, _ := cmd.Flags().GetBool("failed-only")
 
 	// Load configuration.
 	cfg, err := config.Load(cfgPath, envName)
@@ -107,6 +111,19 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 
 	filterOpts := executor.FilterOptions{Tags: tags, Grep: grep, Priority: priority}
 	hasFilter := len(tags) > 0 || grep != "" || priority != ""
+
+	if failedOnly {
+		names, err := loadFailedNames()
+		if err != nil {
+			return fmt.Errorf("reading failed-test list: %w", err)
+		}
+		if len(names) == 0 {
+			fmt.Fprintln(os.Stderr, "No failed tests recorded from a previous run.")
+			return nil
+		}
+		filterOpts.Names = names
+		hasFilter = true
+	}
 
 	// loadAndFilter parses all discovered paths, filters FIRST (cheap name/tag
 	// check), then validates only matching tests. This avoids expensive validation
@@ -255,6 +272,7 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 
 	if !watchMode {
 		result := runOnce()
+		_ = saveFailedNames(result)
 		if result.Failed > 0 {
 			os.Exit(1)
 		}
@@ -263,15 +281,59 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 
 	// Watch mode: run tests initially, then re-run on file changes.
 	fmt.Fprintln(cmd.OutOrStdout(), "Watch mode enabled — press Ctrl+C to stop.")
-	runOnce()
+	result := runOnce()
+	_ = saveFailedNames(result)
 
 	w, err := watcher.New([]string{testDir}, func() {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nFile change detected, re-running tests...\n\n")
-		runOnce()
+		r := runOnce()
+		_ = saveFailedNames(r)
 	})
 	if err != nil {
 		return fmt.Errorf("starting watcher: %w", err)
 	}
 	// Start blocks until ctx is cancelled (Ctrl+C).
 	return w.Start(ctx)
+}
+
+const failedNamesFile = ".autoflow-failed"
+
+// saveFailedNames persists names of failed tests so --failed-only can rerun them.
+func saveFailedNames(result *core.SuiteResult) error {
+	if result == nil || result.Failed == 0 {
+		_ = os.Remove(failedNamesFile)
+		return nil
+	}
+	f, err := os.Create(failedNamesFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	for _, r := range result.Tests {
+		if r.Status == core.StatusFailed && r.Test != nil {
+			fmt.Fprintln(w, r.Test.Name)
+		}
+	}
+	return w.Flush()
+}
+
+// loadFailedNames reads the list of previously failed test names.
+func loadFailedNames() (map[string]struct{}, error) {
+	f, err := os.Open(failedNamesFile)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	names := make(map[string]struct{})
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		if name := strings.TrimSpace(scanner.Text()); name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	return names, scanner.Err()
 }

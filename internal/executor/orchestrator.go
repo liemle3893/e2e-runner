@@ -217,6 +217,8 @@ type FilterOptions struct {
 	Grep string
 	// Priority filters tests by exact priority string match.
 	Priority string
+	// Names restricts tests to those whose name appears in this set (used by --failed-only).
+	Names map[string]struct{}
 }
 
 // FilterTests returns the subset of tests that satisfy all non-empty filter criteria.
@@ -241,6 +243,11 @@ func FilterTests(tests []*core.TestDefinition, opts FilterOptions) []*core.TestD
 		}
 		if opts.Priority != "" && string(td.Priority) != opts.Priority {
 			continue
+		}
+		if len(opts.Names) > 0 {
+			if _, ok := opts.Names[td.Name]; !ok {
+				continue
+			}
 		}
 		out = append(out, td)
 	}
