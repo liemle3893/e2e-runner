@@ -30,7 +30,8 @@ func TestNoTryveSurvives(t *testing.T) {
 		".planning":            {},
 	}
 	skipFiles := map[string]struct{}{
-		"no_tryve_test.go": {}, // this file
+		"no_tryve_test.go": {},
+		".goreleaser.yaml": {}, // repo name is go-tryve on GitHub
 	}
 	skipExts := map[string]struct{}{
 		".png": {}, ".jpg": {}, ".jpeg": {}, ".gif": {}, ".pdf": {},
