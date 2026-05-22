@@ -10,7 +10,7 @@ import (
 
 // TestNoMcpAtlassianInDeliver is a regression guard for PR 2: the
 // read-path migration of autoflow-deliver + its spawned agent
-// (autoflow-jira-fetcher) from Atlassian MCP to REST via `autoflow jira`.
+// (autoflow-jira-fetcher) from Atlassian MCP to REST via `autoflow deliver jira`.
 //
 // The autoflow-ticket skill is EXEMPT — it still uses MCP for
 // edit/create/link operations and will be migrated in a follow-up PR.
