@@ -241,14 +241,14 @@ Adds a Jira-to-PR delivery workflow to the autoflow binary with no external
 runtime dependencies (`git` and `gh` only).
 
 ```
-autoflow jira config {set,get,del,show}      Manage .autoflow/jira-config.json
-autoflow jira upload <KEY> <file>...          Upload attachments to a Jira issue
-autoflow jira download <KEY> <dir>            Download attachments from a Jira issue
-autoflow worktree bootstrap <path>            Copy .claude + config files into a worktree
-autoflow deliver {init,next,complete}         13-step delivery state machine
-autoflow loop-state {init,append,read,round-count}   Generic agentic-loop state manager
-autoflow scaffold-e2e --ticket KEY --area A --count N   Generate E2E test stubs
-autoflow doctor                               Preflight checklist (git, gh, Jira, install layout)
+autoflow deliver jira config {set,get,del,show}                    Manage .autoflow/jira-config.json
+autoflow deliver jira upload <KEY> <file>...                       Upload attachments to a Jira issue
+autoflow deliver jira download <KEY> <dir>                         Download attachments from a Jira issue
+autoflow deliver worktree bootstrap <path>                         Copy .claude + config files into a worktree
+autoflow deliver {init,next,complete}                              13-step delivery state machine
+autoflow deliver loop-state {init,append,read,round-count}         Generic agentic-loop state manager
+autoflow deliver doctor                                            Preflight checklist (git, gh, Jira, install layout)
+autoflow e2e scaffold --ticket KEY --area A --count N              Generate E2E test stubs
 ```
 
 Install skills + agents with `autoflow install --autoflow` — this drops

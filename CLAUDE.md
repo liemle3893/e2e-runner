@@ -37,14 +37,15 @@ autoflow install --autoflow                  # Install autoflow skills + agents
                                           # (auto-cleans legacy .claude/scripts/autoflow/)
 
 # Autoflow — ported from winx-autoflow, no bash scripts
-autoflow jira config {set,get,del,show}
-autoflow jira upload <issue-key> <file>...
-autoflow jira download <issue-key> <dest-dir>
-autoflow worktree bootstrap <worktree-path>
+autoflow deliver jira config {set,get,del,show}
+autoflow deliver jira upload <issue-key> <file>...
+autoflow deliver jira download <issue-key> <dest-dir>
+autoflow deliver worktree bootstrap <worktree-path>
 autoflow deliver {init,next,complete}
-autoflow loop-state {init,append,read,round-count} <state-file>
-autoflow scaffold-e2e --ticket KEY --area AREA --count N
-autoflow doctor                     # Preflight checklist
+autoflow deliver loop-state {init,append,read,round-count} <state-file>
+autoflow deliver config {set,get,del,show}
+autoflow deliver doctor             # Preflight checklist
+autoflow e2e scaffold --ticket KEY --area AREA --count N
 ```
 
 ## Shared Utilities (use these, don't reimplement)
