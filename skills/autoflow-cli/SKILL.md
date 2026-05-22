@@ -39,6 +39,7 @@ Run with: `autoflow e2e run --env local`
 | `autoflow e2e init` | Initialize `e2e.config.yaml` |
 | `autoflow e2e test create <name>` | Create test from template (`--template http\|shell`) |
 | `autoflow e2e test list-templates` | List available templates |
+| `autoflow e2e scaffold --ticket KEY --area AREA --count N` | Generate E2E test stubs for a ticket |
 | `autoflow e2e doc [section]` | Show documentation for a section |
 | `autoflow install --skills` | Install Claude Code skills to `.claude/skills/autoflow-cli/` |
 | `autoflow version` | Print version |
