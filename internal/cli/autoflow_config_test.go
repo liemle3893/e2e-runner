@@ -34,7 +34,7 @@ func TestAutoflowConfig_SetGetShow(t *testing.T) {
 	root.SetOut(&out)
 	root.SetErr(&out)
 
-	root.SetArgs([]string{"config", "set", "coding_agent", "claude"})
+	root.SetArgs([]string{"deliver", "config", "set", "coding_agent", "claude"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestAutoflowConfig_SetGetShow(t *testing.T) {
 	}
 
 	out.Reset()
-	root.SetArgs([]string{"config", "get", "coding_agent"})
+	root.SetArgs([]string{"deliver", "config", "get", "coding_agent"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestAutoflowConfig_SetGetShow(t *testing.T) {
 	}
 
 	out.Reset()
-	root.SetArgs([]string{"config", "show"})
+	root.SetArgs([]string{"deliver", "config", "show"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("show: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestAutoflowConfig_SetInvalidAgent(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"config", "set", "coding_agent", "gpt"})
+	root.SetArgs([]string{"deliver", "config", "set", "coding_agent", "gpt"})
 	if err := root.Execute(); err == nil {
 		t.Error("want error for invalid agent")
 	}

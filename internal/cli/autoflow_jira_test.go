@@ -20,9 +20,13 @@ func TestAutoflowJiraSubtree(t *testing.T) {
 	sort.Strings(want)
 
 	root := NewRoot("test")
-	j := findChild(root, "jira")
+	d := findChild(root, "deliver")
+	if d == nil {
+		t.Fatal("deliver subcommand not found under root")
+	}
+	j := findChild(d, "jira")
 	if j == nil {
-		t.Fatal("jira subcommand not found under root")
+		t.Fatal("jira subcommand not found under deliver")
 	}
 	got := commandNames(j.Commands())
 	assertEqualNames(t, "jira", got, want)
@@ -100,7 +104,7 @@ func TestJiraTransitionRequiresFlag(t *testing.T) {
 
 	// Because RunE runs in order (flags parsed -> RunE body), the
 	// name/id check is the first effect.
-	_, err := runRootCmd(t, "jira", "transition", "PROJ-1")
+	_, err := runRootCmd(t, "deliver", "jira", "transition", "PROJ-1")
 	if err == nil {
 		t.Fatal("expected error when --name/--id both omitted")
 	}
@@ -110,7 +114,7 @@ func TestJiraTransitionRequiresFlag(t *testing.T) {
 }
 
 func TestJiraSearchRequiresJQL(t *testing.T) {
-	_, err := runRootCmd(t, "jira", "search")
+	_, err := runRootCmd(t, "deliver", "jira", "search")
 	if err == nil {
 		t.Fatal("expected error when --jql omitted")
 	}
@@ -120,7 +124,7 @@ func TestJiraSearchRequiresJQL(t *testing.T) {
 }
 
 func TestJiraFetchHelp(t *testing.T) {
-	out, err := runRootCmd(t, "jira", "fetch", "--help")
+	out, err := runRootCmd(t, "deliver", "jira", "fetch", "--help")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +145,14 @@ func assertCommandExists(t *testing.T, parent *cobra.Command, name string) {
 
 func TestJiraSubcommandsExist(t *testing.T) {
 	root := NewRoot("test")
-	j := findChild(root, "jira")
+	d := findChild(root, "deliver")
+	if d == nil {
+		t.Fatal("deliver subcommand not found under root")
+	}
+	j := findChild(d, "jira")
+	if j == nil {
+		t.Fatal("jira subcommand not found under deliver")
+	}
 	for _, n := range []string{"fetch", "search", "transitions", "transition"} {
 		assertCommandExists(t, j, n)
 	}

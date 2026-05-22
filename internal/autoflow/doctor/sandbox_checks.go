@@ -41,7 +41,7 @@ func checkCodingAgent(root string) Checker {
 			r.Detail = c.CodingAgent
 		case "":
 			r.Status = Fail
-			r.Detail = "unset — run `autoflow config set coding_agent claude|copilot`"
+			r.Detail = "unset — run `autoflow deliver config set coding_agent claude|copilot`"
 		default:
 			r.Status = Fail
 			r.Detail = "unknown agent " + c.CodingAgent + " (expected claude|copilot)"

@@ -132,7 +132,7 @@ func installAutoflow(cmd *cobra.Command, cwd string) error {
 	out := cmd.OutOrStdout()
 	cfgPath := config.Path(cwd)
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		fmt.Fprintln(out, "Next: autoflow config set coding_agent claude|copilot")
+		fmt.Fprintln(out, "Next: autoflow deliver config set coding_agent claude|copilot")
 	}
 	c, _ := config.Read(cwd)
 	if c != nil && c.CodingAgent != "" {

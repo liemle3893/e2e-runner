@@ -9,7 +9,7 @@ import (
 	"github.com/liemle3893/autoflow/internal/autoflow/state"
 )
 
-// newAutoflowConfigCmd builds the top-level `autoflow config` subtree for
+// newAutoflowConfigCmd builds the `autoflow deliver config` subtree for
 // managing .autoflow/config.json.
 func newAutoflowConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
