@@ -70,7 +70,7 @@ func checkJIRAConfig(root string) Checker {
 		if err != nil {
 			if errors.Is(err, jira.ErrNoConfig) {
 				r.Status = Fail
-				r.Detail = "not cached — run `autoflow jira config set ...`"
+				r.Detail = "not cached — run `autoflow deliver jira config set ...`"
 				return r
 			}
 			r.Status = Fail
@@ -125,7 +125,7 @@ func checkJIRAReachable(root string) Checker {
 }
 
 // checkBootstrap is a soft check — bootstrap.json is nice to have but
-// not required unless the user plans to run `autoflow worktree
+// not required unless the user plans to run `autoflow deliver worktree
 // bootstrap`.
 func checkBootstrap(root string) Checker {
 	return func(ctx context.Context) Result {

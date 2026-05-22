@@ -139,7 +139,7 @@ func installAutoflow(cmd *cobra.Command, cwd string) error {
 		if _, err := exec.LookPath("sbx"); err == nil {
 			slug := filepath.Base(cwd)
 			fmt.Fprintf(out,
-				"Suggested: sbx run %s --name %s . && autoflow sandbox bootstrap --name %s\n",
+				"Suggested: sbx run %s --name %s . && autoflow deliver sandbox bootstrap --name %s\n",
 				c.CodingAgent, slug, slug)
 		}
 	}

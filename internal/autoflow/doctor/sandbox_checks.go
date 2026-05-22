@@ -246,7 +246,7 @@ func checkSbxAutoflow(root string) Checker {
 		}
 		if _, err := runCombined(ctx, "sbx", "exec", name, "--", "command", "-v", "autoflow"); err != nil {
 			r.Status = Fail
-			r.Detail = "autoflow not in sandbox — run `autoflow sandbox bootstrap --name " + name + "`"
+			r.Detail = "autoflow not in sandbox — run `autoflow deliver sandbox bootstrap --name " + name + "`"
 			return r
 		}
 		r.Status = OK

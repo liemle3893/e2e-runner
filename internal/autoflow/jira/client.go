@@ -30,7 +30,7 @@ func NewClient(creds *Credentials) *Client {
 }
 
 // Myself pings /rest/api/3/myself to verify the credentials are good.
-// Used by `autoflow doctor`. Returns the accountId on success.
+// Used by `autoflow deliver doctor`. Returns the accountId on success.
 func (c *Client) Myself(ctx context.Context) (string, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, "/rest/api/3/myself", nil)
 	if err != nil {

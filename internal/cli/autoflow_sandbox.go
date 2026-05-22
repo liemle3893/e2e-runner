@@ -18,7 +18,7 @@ import (
 var sandboxHostVersion = "dev"
 
 // SetSandboxHostVersion is invoked from cmd/autoflow/main.go so the CLI's
-// version string (set via -ldflags) is available to `autoflow sandbox
+// version string (set via -ldflags) is available to `autoflow deliver sandbox
 // bootstrap`.
 func SetSandboxHostVersion(v string) {
 	if v != "" {

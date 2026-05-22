@@ -80,7 +80,7 @@ func (c *Controller) step01(key string) *Instruction {
 	// from the Jira cache so the agent can wire it into the REST calls
 	// without a second lookup. Instead of spawning a bash pre-step we
 	// embed a literal placeholder and tell the agent to run
-	// `autoflow jira config get --field cloudId` to fill it in — matches
+	// `autoflow deliver jira config get --field cloudId` to fill it in — matches
 	// the skill's instructions.
 	prompt := strings.Join([]string{
 		"TICKET_KEY: " + key,
@@ -88,7 +88,7 @@ func (c *Controller) step01(key string) *Instruction {
 		"OUTPUT_PATH: " + filepath.Join(tdir, "task-brief.md"),
 		"ATTACHMENTS_DIR: " + filepath.Join(tdir, "attachments") + "/",
 		"",
-		`CLOUD_ID: <run "autoflow jira config get --field cloudId" in REPO_ROOT>`,
+		`CLOUD_ID: <run "autoflow deliver jira config get --field cloudId" in REPO_ROOT>`,
 		"",
 		"Follow your role definition. Produce a verbatim task brief — no rephrasing of AC/DoD. No worktree exists yet.",
 	}, "\n")
@@ -278,7 +278,7 @@ func (c *Controller) step03(key string, progress *state.Progress) *Instruction {
 			"WORKTREE_DIR: " + wt,
 			"TASK_BRIEF_PATH: " + brief,
 			"",
-			`Follow your role definition. Run "autoflow scaffold-e2e --ticket ` + key + ` --area <AREA> --count <N>" from WORKTREE_DIR.`,
+			`Follow your role definition. Run "autoflow e2e scaffold --ticket ` + key + ` --area <AREA> --count <N>" from WORKTREE_DIR.`,
 			`Write tests under ${WORKTREE_DIR}/tests/e2e/. Tests must fail (no implementation yet).`,
 			`Every file MUST include tags: [<area>, ` + key + `].`,
 		}, "\n"),

@@ -1,4 +1,4 @@
-// Package doctor implements `autoflow doctor` — a preflight
+// Package doctor implements `autoflow deliver doctor` — a preflight
 // checklist that surfaces the common misconfigurations the autoflow
 // agents will otherwise hit mid-run. Every check is standalone; the
 // aggregator prints a table and exits with a status that reflects the
