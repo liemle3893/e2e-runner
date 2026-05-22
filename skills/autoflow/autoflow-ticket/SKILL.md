@@ -33,13 +33,13 @@ If mode is ambiguous, ask the user.
 
 ## Setup
 
-**Jira Connection:** Run `autoflow jira config get --field cloudId`.
+**Jira Connection:** Run `autoflow deliver jira config get --field cloudId`.
 If the command exits non-zero (nothing cached): call `mcp__atlassian__getAccessibleAtlassianResources` MCP tool, then ask user for their Atlassian email and run:
 ```bash
-autoflow jira config set --cloud-id <cloudId> --site-url <siteUrl> --project-key <projectKey> --email <email>
+autoflow deliver jira config set --cloud-id <cloudId> --site-url <siteUrl> --project-key <projectKey> --email <email>
 ```
 
-**Important:** Always include `--email` — it is required by `autoflow jira upload` and `... download` for REST API authentication.
+**Important:** Always include `--email` — it is required by `autoflow deliver jira upload` and `... download` for REST API authentication.
 
 ---
 
@@ -212,7 +212,7 @@ For each task in a plan, create a Subtask under the Story:
 
 Upload the original plan file as an attachment to the Epic (and optionally to the first Story):
 ```bash
-autoflow jira upload <EPIC_KEY> <plan-file-path>
+autoflow deliver jira upload <EPIC_KEY> <plan-file-path>
 ```
 
 This ensures the full plan is always accessible from Jira, rather than embedding large file contents in ticket descriptions. In the `## Plan Files` section of ticket descriptions, reference the attachment:

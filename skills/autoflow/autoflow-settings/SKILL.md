@@ -46,7 +46,7 @@ Writes to `.autoflow/bootstrap.json`:
 ```
 
 Sibling files under `.autoflow/`:
-- `jira-config.json` — Jira connection (managed by `autoflow jira config`)
+- `jira-config.json` — Jira connection (managed by `autoflow deliver jira config`)
 - `bootstrap.json` — this skill
 - Future: other autoflow state
 
@@ -265,7 +265,7 @@ Display:
 Saved to: .autoflow/bootstrap.json
 
 Used by:
-- `autoflow worktree bootstrap` (command)
+- `autoflow deliver worktree bootstrap` (command)
 - autoflow-deliver (Step 2: worktree creation)
 
 To re-configure: /autoflow-settings

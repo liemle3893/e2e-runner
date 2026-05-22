@@ -21,7 +21,7 @@ WORKTREE_DIR=$(cd ../<repo>-<ticket-key> && pwd)          # feature worktree
 ### Command routing
 
 - `git diff origin/${BASE_BRANCH}...HEAD` — MUST run from `WORKTREE_DIR` (diffs the wrong branch from REPO_ROOT)
-- `autoflow loop-state` — MUST run from `REPO_ROOT` (finds state files in `.autoflow/ticket/<KEY>/state/`)
+- `autoflow deliver loop-state` — MUST run from `REPO_ROOT` (finds state files in `.autoflow/ticket/<KEY>/state/`)
 - `BASE_BRANCH` — read from `.autoflow/bootstrap.json`
 
 ### Step 1 exception

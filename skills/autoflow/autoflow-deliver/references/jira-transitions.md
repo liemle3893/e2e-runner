@@ -5,11 +5,11 @@ Reference loaded on-demand by `autoflow-deliver/SKILL.md`.
 ## Protocol
 
 Transition IDs are instance-specific and must never be hardcoded. Always
-discover at runtime through the `autoflow jira` REST CLI — no MCP tools.
+discover at runtime through the `autoflow deliver jira` REST CLI — no MCP tools.
 
-- List transitions: `autoflow jira transitions <KEY>` (prints JSON).
-- Apply a transition by name (case-insensitive): `autoflow jira transition <KEY> --name '<Name>'`.
-- Apply by explicit id (bypass name lookup): `autoflow jira transition <KEY> --id <ID>`.
+- List transitions: `autoflow deliver jira transitions <KEY>` (prints JSON).
+- Apply a transition by name (case-insensitive): `autoflow deliver jira transition <KEY> --name '<Name>'`.
+- Apply by explicit id (bypass name lookup): `autoflow deliver jira transition <KEY> --id <ID>`.
 
 The CLI resolves name → id internally; on no match it exits non-zero and
 prints the available transition names to stderr so you can escalate.
@@ -30,7 +30,7 @@ prints the available transition names to stderr so you can escalate.
 After worktree creation, transition from "To Do" → "In Development":
 
 ```bash
-autoflow jira transition <KEY> --name 'Start Dev'
+autoflow deliver jira transition <KEY> --name 'Start Dev'
 ```
 
 **Rules:**
@@ -43,7 +43,7 @@ After all gates pass and PR is ready, transition from "In Development" →
 "In Code Review":
 
 ```bash
-autoflow jira transition <KEY> --name 'Dev Done'
+autoflow deliver jira transition <KEY> --name 'Dev Done'
 ```
 
 **Rules:**
@@ -54,5 +54,5 @@ autoflow jira transition <KEY> --name 'Dev Done'
 
 If the transition fails with `no transition named "X" (available: ...)`,
 your workflow state does not match expectations (e.g. ticket not in the
-required From status). Inspect with `autoflow jira transitions <KEY>`
+required From status). Inspect with `autoflow deliver jira transitions <KEY>`
 and escalate to the user.
