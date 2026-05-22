@@ -26,9 +26,9 @@ Spawned by: autoflow-deliver skill (Step 4) — max 3 rounds.
 - **Read `TASK_BRIEF_PATH`** — absolute, main repo.
 - **Read test files via `TEST_GLOB`** — prefix with `WORKTREE_DIR`: `${WORKTREE_DIR}/tests/e2e/...`. Use Glob/Read with absolute paths.
 - **Write missing test files** — absolute paths under `${WORKTREE_DIR}/tests/e2e/<AREA>/`. Never write to `REPO_ROOT`.
-- **Run `autoflow loop-state append`** — run from `REPO_ROOT` so it writes to the main-repo state file:
+- **Run `autoflow deliver loop-state append`** — run from `REPO_ROOT` so it writes to the main-repo state file:
   ```bash
-  cd "$REPO_ROOT" && autoflow loop-state append "$STATE_FILE" --round-json '...'
+  cd "$REPO_ROOT" && autoflow deliver loop-state append "$STATE_FILE" --round-json '...'
   ```
 </working_directory>
 
@@ -41,7 +41,7 @@ Spawned by: autoflow-deliver skill (Step 4) — max 3 rounds.
    - Build a `fixes` array listing the new files and what each covers.
 5. Append the round via the state manager (do NOT hand-edit the state file):
    ```bash
-   autoflow loop-state append <STATE_FILE> --round-json '<json>'
+   autoflow deliver loop-state append <STATE_FILE> --round-json '<json>'
    ```
    `<json>` shape:
    ```json

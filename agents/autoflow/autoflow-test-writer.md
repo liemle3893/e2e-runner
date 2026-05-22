@@ -23,9 +23,9 @@ Spawned by: autoflow-deliver skill (Step 3).
 <working_directory>
 **Split cwd contract:**
 - **Read `TASK_BRIEF_PATH`** — absolute path, no cwd needed.
-- **Read existing test patterns + run `autoflow scaffold-e2e`** — run from `WORKTREE_DIR` so scaffolded paths land under `tests/e2e/<AREA>/`:
+- **Read existing test patterns + run `autoflow e2e scaffold`** — run from `WORKTREE_DIR` so scaffolded paths land under `tests/e2e/<AREA>/`:
   ```bash
-  cd "$WORKTREE_DIR" && autoflow scaffold-e2e --ticket <KEY> --area <AREA> --count <N>
+  cd "$WORKTREE_DIR" && autoflow e2e scaffold --ticket <KEY> --area <AREA> --count <N>
   ```
 - **Write test YAML files** — absolute paths under `${WORKTREE_DIR}/tests/e2e/<AREA>/`.
 - **Never write to `REPO_ROOT`** — it is a sibling checkout and its source/tests belong to a different branch.
@@ -37,7 +37,7 @@ Spawned by: autoflow-deliver skill (Step 3).
 3. Read the `e2e-runner` skill if present: `.claude/skills/e2e-runner/SKILL.md`.
 4. Scaffold stubs:
    ```bash
-   autoflow scaffold-e2e --ticket <TICKET_KEY> --area <AREA> --count <COUNT>
+   autoflow e2e scaffold --ticket <TICKET_KEY> --area <AREA> --count <COUNT>
    ```
 5. Fill each stub so it describes WHAT the feature does (from an AC), not HOW it's implemented.
 6. Tests are expected to FAIL at this point — there is no implementation yet.

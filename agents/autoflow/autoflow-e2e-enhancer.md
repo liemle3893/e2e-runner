@@ -29,9 +29,9 @@ Spawned by: autoflow-deliver skill (Step 8) — max 3 rounds. Runs AFTER Step 7 
   Running this from `REPO_ROOT` would diff the wrong branch.
 - **Read implementation files + existing tests** — absolute paths under `${WORKTREE_DIR}/src/` and `${WORKTREE_DIR}/tests/e2e/`.
 - **Write new test files or source fixes** — absolute paths under `WORKTREE_DIR`. Never write to `REPO_ROOT`.
-- **Run `autoflow loop-state append`** — from `REPO_ROOT`:
+- **Run `autoflow deliver loop-state append`** — from `REPO_ROOT`:
   ```bash
-  cd "$REPO_ROOT" && autoflow loop-state append "$STATE_FILE" --round-json '...'
+  cd "$REPO_ROOT" && autoflow deliver loop-state append "$STATE_FILE" --round-json '...'
   ```
 </working_directory>
 
@@ -50,7 +50,7 @@ Spawned by: autoflow-deliver skill (Step 8) — max 3 rounds. Runs AFTER Step 7 
 4. If gaps exist, write new test files AND fix source code if the diff reveals a real bug.
 5. Append the round via state manager:
    ```bash
-   autoflow loop-state append <STATE_FILE> --round-json '<json>'
+   autoflow deliver loop-state append <STATE_FILE> --round-json '<json>'
    ```
    `<json>` shape:
    ```json

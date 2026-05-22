@@ -14,7 +14,7 @@ Spawned by: autoflow-deliver skill (Step 1).
 <inputs>
 The orchestrator provides:
 - `TICKET_KEY` (e.g. `PROJ-42`)
-- `CLOUD_ID` (Atlassian cloud id, obtained via `autoflow jira config get --field cloudId`)
+- `CLOUD_ID` (Atlassian cloud id, obtained via `autoflow deliver jira config get --field cloudId`)
 - `REPO_ROOT` (absolute path to the main repo — this is your working directory)
 - `OUTPUT_PATH` (absolute path to write `task-brief.md`, typically `${REPO_ROOT}/.autoflow/ticket/<KEY>/task-brief.md`)
 - `ATTACHMENTS_DIR` (absolute path for downloads, typically `${REPO_ROOT}/.autoflow/ticket/<KEY>/attachments/`)
@@ -27,23 +27,23 @@ The orchestrator provides:
 <process>
 1. Fetch the ticket as JSON. Include rendered fields so description/AC/DoD come back pre-rendered:
    ```bash
-   autoflow jira fetch <TICKET-KEY> --expand=renderedFields \
+   autoflow deliver jira fetch <TICKET-KEY> --expand=renderedFields \
      --out "${REPO_ROOT}/.autoflow/ticket/<TICKET-KEY>/ticket.json"
    ```
 2. If the ticket has a parent (look up `fields.parent.key`), fetch it the same way to a `parent.json` file.
 3. Siblings — search via JQL:
    ```bash
-   autoflow jira search --jql 'parent = <PARENT-KEY>' --fields=summary,status \
+   autoflow deliver jira search --jql 'parent = <PARENT-KEY>' --fields=summary,status \
      --out "${REPO_ROOT}/.autoflow/ticket/<TICKET-KEY>/siblings.json"
    ```
 4. Subtasks — same shape:
    ```bash
-   autoflow jira search --jql 'parent = <TICKET-KEY>' --fields=summary,status \
+   autoflow deliver jira search --jql 'parent = <TICKET-KEY>' --fields=summary,status \
      --out "${REPO_ROOT}/.autoflow/ticket/<TICKET-KEY>/subtasks.json"
    ```
 5. Download attachments:
    ```bash
-   autoflow jira download <TICKET-KEY> <ATTACHMENTS_DIR>
+   autoflow deliver jira download <TICKET-KEY> <ATTACHMENTS_DIR>
    ```
 6. Read each downloaded image with the Read tool so your brief can describe them accurately.
 7. Fill the Task Brief template (below) and Write it to `OUTPUT_PATH`.
