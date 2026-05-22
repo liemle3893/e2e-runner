@@ -11,8 +11,8 @@ import (
 
 func newAutoflowScaffoldCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "scaffold-e2e",
-		Short: "Generate E2E test stubs for a ticket (replaces scaffold-e2e.sh)",
+		Use:   "scaffold",
+		Short: "Generate E2E test stubs for a ticket",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, err := state.RepoRoot()
 			if err != nil {

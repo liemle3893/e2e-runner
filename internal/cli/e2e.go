@@ -18,7 +18,8 @@ Commands:
   init      Create a starter e2e.config.yaml in the current directory
   health    Check connectivity for all configured adapters
   test      Helpers for creating and managing test files
-  doc       Show built-in documentation`,
+  doc       Show built-in documentation
+  scaffold  Generate E2E test stubs for a ticket`,
 	}
 	cmd.AddCommand(
 		newRunCmd(),
@@ -28,6 +29,7 @@ Commands:
 		newHealthCmd(),
 		newTestCmd(),
 		newDocCmd(),
+		newAutoflowScaffoldCmd(),
 	)
 	return cmd
 }

@@ -20,20 +20,29 @@ import (
 func newAutoflowDeliverCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deliver",
-		Short: "13-step ticket delivery workflow controller",
+		Short: "Jira-to-PR delivery workflow + supporting primitives",
 	}
 	cmd.AddCommand(
+		// Public verbs
 		newDeliverNextCmd(),
 		newDeliverCompleteCmd(),
 		newDeliverInitCmd(),
+		newDeliverTimingsCmd(),
+		// Internal API for skill agents
 		newDeliverGateResultCmd(),
 		newDeliverSetFieldCmd(),
 		newDeliverCompleteStepCmd(),
 		newDeliverE2ERoundCmd(),
 		newDeliverReportCmd(),
 		newDeliverVerifyGatesCmd(),
-		newDeliverTimingsCmd(),
 		newDeliverCommitTaskCmd(),
+		// Workflow primitives (moved from top level in the 2026-05-23 reorg)
+		newAutoflowJiraCmd(),
+		newAutoflowWorktreeCmd(),
+		newAutoflowSandboxCmd(),
+		newAutoflowLoopStateCmd(),
+		newAutoflowConfigCmd(),
+		newAutoflowDoctorCmd(),
 	)
 	return cmd
 }

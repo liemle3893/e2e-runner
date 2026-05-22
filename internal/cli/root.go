@@ -4,8 +4,10 @@ package cli
 import "github.com/spf13/cobra"
 
 // NewRoot builds and returns the root cobra command for the autoflow binary.
-// Delivery-workflow commands sit at top level; the e2e test-runner surface
-// lives under the `e2e` subtree.
+// Two visible products: the YAML-driven E2E test runner (`e2e`) and the
+// Jira-to-PR delivery workflow (`deliver`). Workflow primitives (jira,
+// worktree, sandbox, loop-state, config, doctor) live as children of
+// `deliver`. `install` and `version` are cross-cutting top-level peers.
 func NewRoot(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:          "autoflow",
@@ -17,21 +19,20 @@ func NewRoot(version string) *cobra.Command {
 	root.PersistentFlags().StringP("env", "e", "local", "environment name")
 
 	root.AddCommand(
-		// Delivery workflow (top-level peers)
-		newAutoflowJiraCmd(),
-		newAutoflowWorktreeCmd(),
-		newAutoflowDeliverCmd(),
-		newAutoflowLoopStateCmd(),
-		newAutoflowScaffoldCmd(),
-		newAutoflowDoctorCmd(),
-		newAutoflowConfigCmd(),
-		newAutoflowSandboxCmd(),
 		// E2E test-runner subtree
 		newE2ECmd(),
+		// Delivery workflow umbrella (owns jira/worktree/sandbox/loop-state/config/doctor as children)
+		newAutoflowDeliverCmd(),
 		// Cross-cutting
 		newInstallCmd(),
 		newVersionCmd(version),
 	)
+
+	// Eagerly initialise cobra's built-in help and completion commands so
+	// that root.Commands() returns them before Execute() is called (used by
+	// layout tests and tab-completion generators).
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
 
 	return root
 }
