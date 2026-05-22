@@ -11,8 +11,7 @@ import (
 // renames, removals, or additions surface immediately in review.
 func TestRootTopLevelCommands(t *testing.T) {
 	want := []string{
-		"config", "deliver", "doctor", "e2e",
-		"install", "jira", "loop-state", "sandbox", "scaffold-e2e", "version", "worktree",
+		"completion", "deliver", "e2e", "help", "install", "version",
 	}
 	sort.Strings(want)
 
@@ -21,9 +20,11 @@ func TestRootTopLevelCommands(t *testing.T) {
 	assertEqualNames(t, "root", got, want)
 }
 
-// TestE2ESubtreeCommands pins the e2e subtree.
+// TestE2ESubtreeCommands pins the e2e subtree (includes the moved scaffold).
 func TestE2ESubtreeCommands(t *testing.T) {
-	want := []string{"doc", "health", "init", "list", "run", "test", "validate"}
+	want := []string{
+		"doc", "health", "init", "list", "run", "scaffold", "test", "validate",
+	}
 	sort.Strings(want)
 
 	root := NewRoot("test")
@@ -33,6 +34,30 @@ func TestE2ESubtreeCommands(t *testing.T) {
 	}
 	got := commandNames(e2e.Commands())
 	assertEqualNames(t, "e2e", got, want)
+}
+
+// TestDeliverSubtreeCommands pins the deliver umbrella's children. Includes
+// public verbs, the six workflow primitives moved under deliver, and the
+// internal underscore-prefixed subcommands consumed by agents.
+func TestDeliverSubtreeCommands(t *testing.T) {
+	want := []string{
+		// Public verbs
+		"init", "next", "complete", "timings",
+		// Workflow primitives moved under deliver
+		"config", "doctor", "jira", "loop-state", "sandbox", "worktree",
+		// Internal API for skill agents
+		"_commit-task", "_complete-step", "_e2e-round", "_gate-result",
+		"_report", "_set-field", "_verify-gates",
+	}
+	sort.Strings(want)
+
+	root := NewRoot("test")
+	deliver := findChild(root, "deliver")
+	if deliver == nil {
+		t.Fatal("deliver subcommand not found under root")
+	}
+	got := commandNames(deliver.Commands())
+	assertEqualNames(t, "deliver", got, want)
 }
 
 // TestRootUseIsAutoflow guards against a regression to the old binary name.
