@@ -246,7 +246,9 @@ autoflow deliver jira upload <KEY> <file>...                       Upload attach
 autoflow deliver jira download <KEY> <dir>                         Download attachments from a Jira issue
 autoflow deliver worktree bootstrap <path>                         Copy .claude + config files into a worktree
 autoflow deliver {init,next,complete}                              13-step delivery state machine
+autoflow deliver timings [--ticket KEY]                            Per-step duration report (or aggregate across tickets)
 autoflow deliver loop-state {init,append,read,round-count}         Generic agentic-loop state manager
+autoflow deliver sandbox {bootstrap,status}                        Manage the per-repo sbx sandbox used by coding agents
 autoflow deliver config {set,get,del,show}                         Manage .autoflow/config.json (coding agent + sandbox)
 autoflow deliver doctor                                            Preflight checklist (git, gh, Jira, install layout)
 autoflow e2e scaffold --ticket KEY --area A --count N              Generate E2E test stubs
