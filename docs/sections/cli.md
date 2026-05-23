@@ -25,7 +25,7 @@ npm install -g @liemle3893/go-autoflow
 | `e2e test list-templates` | List available test templates |
 | `e2e scaffold --ticket KEY --area AREA --count N` | Generate E2E test stubs for a ticket |
 | `e2e doc [section]` | Show bundled documentation |
-| `install --skills` | Install Claude Code skill bundle (top-level command) |
+| `install` | Install all bundled Claude Code skills + agents (top-level; narrow with `--skills` / `--autoflow`) |
 
 ---
 

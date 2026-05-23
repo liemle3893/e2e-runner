@@ -32,8 +32,9 @@ autoflow e2e doc assertions                      # Assertions reference
 autoflow e2e doc adapters.http                   # HTTP adapter docs
 
 # Install
-autoflow install --skills                    # Install autoflow-cli Claude skill
-autoflow install --autoflow                  # Install autoflow skills + agents
+autoflow install                             # Install everything (= --skills --autoflow)
+autoflow install --skills                    # autoflow-cli skill only
+autoflow install --autoflow                  # autoflow skills + agents only
                                           # (auto-cleans legacy .claude/scripts/autoflow/)
 
 # Autoflow — ported from winx-autoflow, no bash scripts

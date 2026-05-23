@@ -26,7 +26,8 @@ func newInstallCmd() *cobra.Command {
   --autoflow   autoflow skills + agents into .claude/{skills,agents}/,
                and auto-clean any legacy .claude/scripts/autoflow/ dir.
 
-Both flags may be combined. Without flags, prints usage.`,
+Both flags may be combined. Without flags, installs both
+(equivalent to --skills --autoflow).`,
 		Args: cobra.NoArgs,
 		RunE: installCmdHandler,
 	}
@@ -41,13 +42,8 @@ func installCmdHandler(cmd *cobra.Command, _ []string) error {
 	skills, _ := cmd.Flags().GetBool("skills")
 	autoflow, _ := cmd.Flags().GetBool("autoflow")
 	if !skills && !autoflow {
-		out := cmd.OutOrStdout()
-		fmt.Fprintln(out, "Usage: autoflow install [--skills] [--autoflow]")
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Options:")
-		fmt.Fprintln(out, "  --skills     install autoflow-cli skill to .claude/skills/autoflow-cli/")
-		fmt.Fprintln(out, "  --autoflow   install autoflow skills + agents to .claude/{skills,agents}/")
-		return nil
+		skills = true
+		autoflow = true
 	}
 
 	cwd, err := os.Getwd()

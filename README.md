@@ -229,7 +229,7 @@ autoflow e2e health       Check adapter connectivity
 autoflow e2e init         Create e2e.config.yaml
 autoflow e2e test create  Create a test from template
 autoflow e2e doc          Browse built-in documentation
-autoflow install      Install Claude Code skills (--skills, --autoflow)
+autoflow install      Install all Claude Code skills + agents (default; narrow with --skills or --autoflow)
 autoflow     Jira-to-PR autoflow helpers (see below)
 autoflow version      Print version
 ```
@@ -254,10 +254,10 @@ autoflow deliver doctor                                            Preflight che
 autoflow e2e scaffold --ticket KEY --area A --count N              Generate E2E test stubs
 ```
 
-Install skills + agents with `autoflow install --autoflow` — this drops
-`.claude/skills/autoflow-*/` and `.claude/agents/autoflow-*.md` into the
-current project and removes any legacy `.claude/scripts/autoflow/` dir
-left by the old bash installer.
+Install everything with `autoflow install` (or scope down with
+`--skills` / `--autoflow`). This drops `.claude/skills/autoflow-*/` and
+`.claude/agents/autoflow-*.md` into the current project and removes any
+legacy `.claude/scripts/autoflow/` dir left by the old bash installer.
 
 ### `autoflow e2e run` Flags
 
