@@ -323,6 +323,121 @@ func TestValidate_HTTPMissingURL(t *testing.T) {
 	}
 }
 
+// TestValidate_ProcessStartValid verifies that a valid process/start step passes validation.
+func TestValidate_ProcessStartValid(t *testing.T) {
+	td := &tryve.TestDefinition{
+		Name: "TC-PROCESS-VALID",
+		Execute: []tryve.StepDefinition{
+			{Adapter: "shell", Action: "exec", Params: map[string]any{"command": "echo ok"}},
+		},
+		Setup: []tryve.StepDefinition{
+			{
+				Name:    "my-server",
+				Adapter: "process",
+				Action:  "start",
+				Params:  map[string]any{"command": "sleep 60"},
+			},
+		},
+	}
+	errs := loader.Validate(td)
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got: %v", errs)
+	}
+}
+
+// TestValidate_ProcessStartMissingCommand verifies that process/start without command is an error.
+func TestValidate_ProcessStartMissingCommand(t *testing.T) {
+	td := &tryve.TestDefinition{
+		Name: "TC-PROCESS-NO-CMD",
+		Execute: []tryve.StepDefinition{
+			{Adapter: "shell", Action: "exec", Params: map[string]any{"command": "echo ok"}},
+		},
+		Setup: []tryve.StepDefinition{
+			{Adapter: "process", Action: "start", Params: map[string]any{}},
+		},
+	}
+	errs := loader.Validate(td)
+	if len(errs) == 0 {
+		t.Fatal("expected error for missing command")
+	}
+}
+
+// TestValidate_ProcessStopRequiresTargetOrPID verifies that process/stop without target or pid fails.
+func TestValidate_ProcessStopRequiresTargetOrPID(t *testing.T) {
+	td := &tryve.TestDefinition{
+		Name: "TC-PROCESS-STOP-NO-TARGET",
+		Execute: []tryve.StepDefinition{
+			{Adapter: "shell", Action: "exec", Params: map[string]any{"command": "echo ok"}},
+		},
+		Teardown: []tryve.StepDefinition{
+			{Adapter: "process", Action: "stop", Params: map[string]any{}},
+		},
+	}
+	errs := loader.Validate(td)
+	found := false
+	for _, e := range errs {
+		if containsSubstring(e.Error(), "target") || containsSubstring(e.Error(), "pid") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error mentioning target/pid, got: %v", errs)
+	}
+}
+
+// TestValidate_ProcessBackgroundFalse verifies that background: false is rejected.
+func TestValidate_ProcessBackgroundFalse(t *testing.T) {
+	td := &tryve.TestDefinition{
+		Name: "TC-PROCESS-BG-FALSE",
+		Execute: []tryve.StepDefinition{
+			{Adapter: "shell", Action: "exec", Params: map[string]any{"command": "echo ok"}},
+		},
+		Setup: []tryve.StepDefinition{
+			{Adapter: "process", Action: "start", Params: map[string]any{
+				"command":    "sleep 60",
+				"background": false,
+			}},
+		},
+	}
+	errs := loader.Validate(td)
+	found := false
+	for _, e := range errs {
+		if containsSubstring(e.Error(), "background") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error mentioning background, got: %v", errs)
+	}
+}
+
+// TestValidate_DuplicateStepName verifies that duplicate step names are rejected.
+func TestValidate_DuplicateStepName(t *testing.T) {
+	td := &tryve.TestDefinition{
+		Name: "TC-DUP-NAME",
+		Execute: []tryve.StepDefinition{
+			{Adapter: "shell", Action: "exec", Params: map[string]any{"command": "echo ok"}},
+		},
+		Setup: []tryve.StepDefinition{
+			{Name: "server", Adapter: "process", Action: "start", Params: map[string]any{"command": "sleep 60"}},
+			{Name: "server", Adapter: "process", Action: "start", Params: map[string]any{"command": "sleep 60"}},
+		},
+	}
+	errs := loader.Validate(td)
+	found := false
+	for _, e := range errs {
+		if containsSubstring(e.Error(), "duplicate") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error mentioning duplicate, got: %v", errs)
+	}
+}
+
 // containsSubstring reports whether s contains substr (case-insensitive helper).
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr ||

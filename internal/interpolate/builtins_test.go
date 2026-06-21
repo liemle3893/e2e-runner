@@ -168,6 +168,42 @@ func TestBuiltin_Env_Missing(t *testing.T) {
 	}
 }
 
+// TestBuiltin_Env_Default verifies that $env(name, default) returns the default when unset.
+func TestBuiltin_Env_Default(t *testing.T) {
+	os.Unsetenv("E2E_UNSET_VAR_FOR_DEFAULT")
+	got, err := interpolate.CallBuiltin("env", "E2E_UNSET_VAR_FOR_DEFAULT", "fallback_value")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "fallback_value" {
+		t.Errorf("expected %q, got %q", "fallback_value", got)
+	}
+}
+
+// TestBuiltin_Env_DefaultIgnoredWhenSet verifies that the default is ignored when the var is set.
+func TestBuiltin_Env_DefaultIgnoredWhenSet(t *testing.T) {
+	t.Setenv("E2E_SET_VAR_WITH_DEFAULT", "real_value")
+	got, err := interpolate.CallBuiltin("env", "E2E_SET_VAR_WITH_DEFAULT", "fallback_value")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "real_value" {
+		t.Errorf("expected %q, got %q", "real_value", got)
+	}
+}
+
+// TestBuiltin_Env_EmptyDefault verifies that an empty default is returned when the var is unset.
+func TestBuiltin_Env_EmptyDefault(t *testing.T) {
+	os.Unsetenv("E2E_UNSET_VAR_EMPTY_DEFAULT")
+	got, err := interpolate.CallBuiltin("env", "E2E_UNSET_VAR_EMPTY_DEFAULT", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
 // TestBuiltin_File verifies that $file() reads a temp file correctly.
 func TestBuiltin_File(t *testing.T) {
 	dir := t.TempDir()
@@ -305,5 +341,29 @@ func TestBuiltin_JSONStringify(t *testing.T) {
 	// Should contain escaped quote
 	if !strings.Contains(got, `\"`) {
 		t.Error("expected escaped double-quote in output")
+	}
+}
+
+// TestBuiltin_FreePort verifies that $freePort() returns a valid port number.
+func TestBuiltin_FreePort(t *testing.T) {
+	got, err := interpolate.CallBuiltin("freePort")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	port, err := strconv.Atoi(got)
+	if err != nil {
+		t.Fatalf("expected numeric port, got %q: %v", got, err)
+	}
+	if port < 1024 || port > 65535 {
+		t.Fatalf("port %d outside expected range [1024, 65535]", port)
+	}
+}
+
+// TestBuiltin_FreePort_Unique verifies that two calls return different ports.
+func TestBuiltin_FreePort_Unique(t *testing.T) {
+	a, _ := interpolate.CallBuiltin("freePort")
+	b, _ := interpolate.CallBuiltin("freePort")
+	if a == b {
+		t.Fatalf("expected different ports, both got %s", a)
 	}
 }

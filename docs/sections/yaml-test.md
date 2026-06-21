@@ -187,9 +187,39 @@ setup:
     action: set
     key: "feature:enabled"
     value: "true"
+
+  # Start a background process
+  - name: api-server
+    adapter: process
+    action: start
+    command: go run ./cmd/server
+    env:
+      PORT: "{{free_port}}"
+    readiness:
+      http: "http://localhost:{{free_port}}/health"
+    capture:
+      port: "port"
+      pid: "pid"
 ```
 
 Skip with `--skip-setup` flag.
+
+### Step Name
+
+Steps can have an optional `name` field. When set, captured values are stored in a nested namespace:
+
+```yaml
+- name: my-server
+  adapter: process
+  action: start
+  command: "start-server"
+  capture:
+    port: "port"
+    pid: "pid"
+# Captured values accessible as: {{captured.my-server.port}}, {{captured.my-server.pid}}
+```
+
+Steps without a `name` continue to use flat capture (`{{captured.port}}`). Step names must be unique across all phases in a test.
 
 ### Execute Phase
 

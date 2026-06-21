@@ -13,6 +13,7 @@ import (
 var knownStepFields = map[string]struct{}{
 	"adapter":         {},
 	"action":          {},
+	"name":            {},
 	"description":     {},
 	"capture":         {},
 	"assert":          {},
@@ -119,6 +120,8 @@ func parseStep(m map[string]any) tryve.StepDefinition {
 				s.Adapter, _ = v.(string)
 			case "action":
 				s.Action, _ = v.(string)
+			case "name":
+				s.Name, _ = v.(string)
 			case "description":
 				s.Description, _ = v.(string)
 			case "continueOnError":

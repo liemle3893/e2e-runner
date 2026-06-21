@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ var builtins = map[string]BuiltinFunc{
 	"lower":         builtinLower,
 	"upper":         builtinUpper,
 	"trim":          builtinTrim,
+	"freePort":      builtinFreePort,
 }
 
 // CallBuiltin calls a named built-in function with the given arguments.
@@ -113,13 +115,16 @@ func builtinRandomString(args ...string) (string, error) {
 }
 
 // builtinEnv returns the value of the named environment variable.
-// Returns an error if the variable is not set.
+// Accepts an optional second argument as a default value when the variable is not set.
 func builtinEnv(args ...string) (string, error) {
-	if len(args) != 1 || args[0] == "" {
-		return "", fmt.Errorf("env: expected 1 argument (variable name)")
+	if len(args) < 1 || len(args) > 2 || args[0] == "" {
+		return "", fmt.Errorf("env: expected 1-2 arguments (variable name[, default])")
 	}
 	val, ok := os.LookupEnv(args[0])
 	if !ok {
+		if len(args) == 2 {
+			return args[1], nil
+		}
 		return "", fmt.Errorf("env: variable %q is not set", args[0])
 	}
 	return val, nil
@@ -314,4 +319,15 @@ func builtinTrim(args ...string) (string, error) {
 		return "", fmt.Errorf("trim: expected 1 argument")
 	}
 	return strings.TrimSpace(args[0]), nil
+}
+
+// builtinFreePort allocates an available TCP port from the OS and returns it as a string.
+func builtinFreePort(_ ...string) (string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("freePort: %w", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return strconv.Itoa(port), nil
 }

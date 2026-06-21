@@ -15,6 +15,7 @@ var validAdapters = map[string]struct{}{
 	"kafka":      {},
 	"eventhub":   {},
 	"shell":      {},
+	"process":    {},
 }
 
 // validPriorities is the set of allowed priority strings.  An empty string is
@@ -93,6 +94,7 @@ func Validate(td *tryve.TestDefinition) []error {
 		{"teardown", td.Teardown},
 	}
 
+	seenNames := map[string]string{}
 	for _, ph := range allPhases {
 		for i, step := range ph.steps {
 			stepRef := fmt.Sprintf("%s[%d]", ph.name, i)
@@ -100,6 +102,18 @@ func Validate(td *tryve.TestDefinition) []error {
 				stepRef = step.ID
 			}
 			errs = append(errs, validateStep(stepRef, &step)...)
+
+			if step.Name != "" {
+				if prev, dup := seenNames[step.Name]; dup {
+					errs = append(errs, tryve.ValidationError(
+						fmt.Sprintf("step %s: duplicate step name %q (first used at %s)", stepRef, step.Name, prev),
+						"use unique step names to avoid capture collisions",
+						nil,
+					))
+				} else {
+					seenNames[step.Name] = stepRef
+				}
+			}
 		}
 	}
 
@@ -113,7 +127,7 @@ func validateStep(ref string, step *tryve.StepDefinition) []error {
 	if _, ok := validAdapters[step.Adapter]; !ok {
 		errs = append(errs, tryve.ValidationError(
 			fmt.Sprintf("step %s: unknown adapter %q", ref, step.Adapter),
-			fmt.Sprintf("use one of: http, postgresql, mongodb, redis, kafka, eventhub, shell"),
+			fmt.Sprintf("use one of: http, postgresql, mongodb, redis, kafka, eventhub, shell, process"),
 			nil,
 		))
 		// No further per-adapter checks possible without a valid adapter.
@@ -173,9 +187,42 @@ func validateAdapterConstraints(ref string, step *tryve.StepDefinition) []error 
 		if step.Action != "clear" {
 			errs = append(errs, requireParam(ref, params, "topic")...)
 		}
+
+	case "process":
+		errs = append(errs, requireOneOfActions(ref, step, "start", "stop")...)
+		if step.Action == "start" {
+			errs = append(errs, requireParam(ref, params, "command")...)
+			if bg, ok := params["background"]; ok {
+				if bgBool, ok := bg.(bool); ok && !bgBool {
+					errs = append(errs, tryve.ValidationError(
+						fmt.Sprintf("step %s: background: false is not supported for process/start", ref),
+						"remove background or set it to true",
+						nil,
+					))
+				}
+			}
+		}
+		if step.Action == "stop" {
+			if !hasParam(params, "target") && !hasParam(params, "pid") {
+				errs = append(errs, tryve.ValidationError(
+					fmt.Sprintf("step %s: process/stop requires either 'target' or 'pid'", ref),
+					"set 'target' to the process step name or 'pid' to a captured PID",
+					nil,
+				))
+			}
+		}
 	}
 
 	return errs
+}
+
+// hasParam reports whether the named key exists and is non-nil in params.
+func hasParam(params map[string]any, key string) bool {
+	if params == nil {
+		return false
+	}
+	v, ok := params[key]
+	return ok && v != nil
 }
 
 // requireAction returns an error when the step action does not match the single

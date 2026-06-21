@@ -201,6 +201,9 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	// Shell adapter is always available.
 	reg.Register("shell", adapter.NewShellAdapter(&adapter.ShellConfig{}))
 
+	// Process adapter is always available.
+	reg.Register("process", adapter.NewProcessAdapter())
+
 	// Register adapters from the environment config block.
 	for name, adapterCfg := range cfg.Environment.Adapters {
 		switch name {

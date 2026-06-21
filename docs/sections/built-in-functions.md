@@ -127,14 +127,15 @@ variables:
 
 ## Environment Functions
 
-### `$env(varName)`
+### `$env(varName)` / `$env(varName, default)`
 
-Read environment variable.
+Read environment variable. When a default is provided, returns the default value instead of erroring if the variable is not set.
 
 ```yaml
 variables:
   api_key: "{{$env(API_KEY)}}"
   db_url: "{{$env(DATABASE_URL)}}"
+  root_url: "{{$env(ROOT_URL, http://localhost:8080)}}"
 
 execute:
   - adapter: http
@@ -264,6 +265,34 @@ variables:
   clean: "{{$trim(  hello world  )}}"
   # → "hello world"
 ```
+
+---
+
+## Network Functions
+
+### `$freePort()`
+
+Allocate an available TCP port from the OS. Each call returns a different port.
+
+```yaml
+variables:
+  server_port: "{{$freePort()}}"
+  # → "49152" (varies)
+```
+
+Useful for starting services on dynamic ports to avoid conflicts:
+
+```yaml
+variables:
+  port: "{{$freePort()}}"
+
+setup:
+  - adapter: shell
+    action: exec
+    command: "start-server --port={{port}}"
+```
+
+> **Note:** When using the `process` adapter, free port allocation is handled automatically via the `{{free_port}}` token — you don't need `$freePort()` in that case. Use `$freePort()` for ad-hoc port allocation outside process steps.
 
 ---
 
@@ -445,7 +474,7 @@ execute:
 | `$isoDate()` | none | ISO date | `2024-12-21T10:30:00.000Z` |
 | `$random(min, max)` | 2 numbers | Random int | `4523` |
 | `$randomString(len)` | number | Random string | `aB3dF7gH...` |
-| `$env(name)` | string | Env variable | `value` |
+| `$env(name[, default])` | string | Env variable | `value` |
 | `$file(path)` | string | File contents | `{...}` |
 | `$base64(value)` | string | Base64 encode | `SGVsbG8=` |
 | `$base64Decode(value)` | string | Base64 decode | `Hello` |
@@ -459,3 +488,4 @@ execute:
 | `$trim(value)` | string | Trimmed | `hello` |
 | `$jsonStringify(value)` | any | JSON string | `{"key":"value"}` |
 | `$totp(secret)` | base32 string | TOTP 6-digit code (RFC 6238) | `482931` |
+| `$freePort()` | none | Available TCP port | `49152` |

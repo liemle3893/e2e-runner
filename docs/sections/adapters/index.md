@@ -12,6 +12,7 @@ Adapters provide connectivity to different services and databases for E2E testin
 |---------|---------|-----------------|
 | [HTTP](http.md) | REST API testing | None (built-in) |
 | [Shell](shell.md) | Shell/CLI command execution | None (built-in) |
+| [Process](process.md) | Background process lifecycle | None (built-in) |
 | [PostgreSQL](postgresql.md) | PostgreSQL database testing | `pg` |
 | [MongoDB](mongodb.md) | MongoDB document testing | `mongodb` |
 | [Redis](redis.md) | Redis cache testing | `ioredis` |

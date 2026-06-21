@@ -12,5 +12,6 @@
   "adapters.mongodb": { "file": "adapters/mongodb.md", "description": "MongoDB adapter" },
   "adapters.redis": { "file": "adapters/redis.md", "description": "Redis adapter" },
   "adapters.eventhub": { "file": "adapters/eventhub.md", "description": "Azure EventHub adapter" },
-  "adapters.kafka": { "file": "adapters/kafka.md", "description": "Apache Kafka adapter" }
+  "adapters.kafka": { "file": "adapters/kafka.md", "description": "Apache Kafka adapter" },
+  "adapters.process": { "file": "adapters/process.md", "description": "Process adapter for background process lifecycle" }
 }

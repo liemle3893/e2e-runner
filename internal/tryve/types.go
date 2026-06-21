@@ -56,6 +56,9 @@ type TestDefinition struct {
 type StepDefinition struct {
 	// ID is assigned at runtime and not present in YAML.
 	ID              string            `yaml:"-"`
+	// Name is an optional user-assigned label for this step; when set, captured
+	// values are stored under a nested map keyed by this name (e.g. captured.<name>.port).
+	Name            string            `yaml:"name"`
 	Adapter         string            `yaml:"adapter"`
 	Action          string            `yaml:"action"`
 	Description     string            `yaml:"description"`

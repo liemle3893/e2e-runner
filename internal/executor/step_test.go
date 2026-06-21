@@ -255,3 +255,63 @@ func TestExecuteStepWithRetry_ContextCancelled(t *testing.T) {
 		t.Error("expected non-passed status after context cancellation")
 	}
 }
+
+// TestExecuteStep_NamespacedCapture verifies that steps with a Name store
+// captured values in a nested map under the step name.
+func TestExecuteStep_NamespacedCapture(t *testing.T) {
+	registry := newTestRegistry("")
+	interpCtx := tryve.NewInterpolationContext()
+
+	step := &tryve.StepDefinition{
+		ID:      "named-step",
+		Name:    "my-server",
+		Adapter: "shell",
+		Action:  "exec",
+		Params:  map[string]any{"command": "echo captured-value"},
+		Capture: map[string]string{"output": "stdout"},
+	}
+
+	outcome, err := executor.ExecuteStep(context.Background(), step, registry, interpCtx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Status != tryve.StatusPassed {
+		t.Fatalf("expected passed, got %s: %v", outcome.Status, outcome.Error)
+	}
+
+	nested, ok := interpCtx.Captured["my-server"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested map under 'my-server', got %T: %v",
+			interpCtx.Captured["my-server"], interpCtx.Captured)
+	}
+	if nested["output"] != "captured-value" {
+		t.Fatalf("expected captured output='captured-value', got %v", nested["output"])
+	}
+}
+
+// TestExecuteStep_FlatCaptureBackwardCompat verifies that steps without a Name
+// still use flat capture (backward compatibility).
+func TestExecuteStep_FlatCaptureBackwardCompat(t *testing.T) {
+	registry := newTestRegistry("")
+	interpCtx := tryve.NewInterpolationContext()
+
+	step := &tryve.StepDefinition{
+		ID:      "flat-step",
+		Adapter: "shell",
+		Action:  "exec",
+		Params:  map[string]any{"command": "echo flat-value"},
+		Capture: map[string]string{"out": "stdout"},
+	}
+
+	outcome, err := executor.ExecuteStep(context.Background(), step, registry, interpCtx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Status != tryve.StatusPassed {
+		t.Fatalf("expected passed, got %s: %v", outcome.Status, outcome.Error)
+	}
+
+	if interpCtx.Captured["out"] != "flat-value" {
+		t.Fatalf("expected captured out='flat-value', got %v", interpCtx.Captured["out"])
+	}
+}

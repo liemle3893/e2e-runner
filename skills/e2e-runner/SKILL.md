@@ -104,7 +104,8 @@ Each phase contains an array of steps:
 
 ```yaml
 - id: create_user                   # Step identifier (auto: "{phase}-{index}")
-  adapter: http                     # http|postgresql|mongodb|redis|eventhub|kafka|shell
+  name: my-step                     # Optional: enables namespaced capture (captured.<name>.*)
+  adapter: http                     # http|postgresql|mongodb|redis|eventhub|kafka|shell|process
   action: request                   # Adapter-specific action
   description: "Create a user"      # Optional
   continueOnError: false            # Convert failure to warning, keep running
@@ -139,7 +140,8 @@ Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting de
 "{{baseUrl}}"
 
 # Environment variables
-"{{$env(API_KEY)}}"
+"{{$env(API_KEY)}}"                 # Required (errors if not set)
+"{{$env(API_KEY, default_value)}}"  # With default (returns default if not set)
 
 # Built-in functions
 "{{$uuid()}}"                       # UUID v4
@@ -160,6 +162,7 @@ Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting de
 "{{$lower(value)}}"                # Lowercase
 "{{$upper(value)}}"                # Uppercase
 "{{$trim(value)}}"                 # Trim whitespace
+"{{$freePort()}}"                  # Allocate available TCP port
 
 # Variable cross-references (resolved in dependency order)
 base_id: "TEST"
@@ -535,3 +538,4 @@ Environment variables are resolved via `${VAR_NAME}` in config. A `.env` file in
 * **EventHub Adapter** [references/adapters/eventhub.md](references/adapters/eventhub.md)
 * **Kafka Adapter** [references/adapters/kafka.md](references/adapters/kafka.md)
 * **Shell Adapter** [references/adapters/shell.md](references/adapters/shell.md)
+* **Process Adapter** [references/adapters/process.md](references/adapters/process.md)
