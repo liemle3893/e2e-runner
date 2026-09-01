@@ -1,5 +1,12 @@
 # Tryve — Design Spec
 
+> **Historical record.** This is the design that produced the current Go
+> implementation, kept for the reasoning behind its decisions. It describes the
+> port as it was planned in April 2026; where it and the code disagree, the code
+> is right. Notably the plan to keep the TypeScript source under `ts/` was not
+> carried out — the TypeScript implementation was removed entirely. For how the
+> code is organised today, see `CLAUDE.md`.
+
 **Date:** 2026-04-10
 **Status:** Approved
 **Approach:** Go-native architecture, full feature parity with TypeScript e2e-runner

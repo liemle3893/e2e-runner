@@ -1,147 +1,59 @@
-# E2E Test Runner Documentation
+# Tryve Documentation
 
-A powerful, YAML-based end-to-end testing framework with multi-adapter support for testing APIs and databases.
+A YAML-driven end-to-end test runner with multi-adapter support for testing APIs,
+databases, caches, and message queues. Single Go binary, no runtime dependencies.
 
-## Table of Contents
+## User Reference — `docs/sections/`
 
-1. [Getting Started](./01-getting-started.md) - Installation and first test
-2. [Configuration](./02-configuration.md) - Config file reference
-3. [YAML Tests](./03-yaml-tests.md) - Test file syntax
-4. [Adapters](./04-adapters.md) - HTTP, PostgreSQL, Redis, MongoDB, EventHub
-5. [Assertions](./05-assertions.md) - All assertion operators
-6. [CLI Reference](./06-cli-reference.md) - Command line options
-7. [Built-in Functions](./07-built-in-functions.md) - Dynamic value generation
+These are the maintained docs. They are embedded into the binary, printed by
+`tryve doc <section>`, and installed into users' projects by
+`tryve install --skills`, so an agent reads exactly what a human reads.
 
-## Quick Start
+| Section | Contents | Command |
+|---------|----------|---------|
+| [Getting Started](./sections/getting-started.md) | Install and run your first test | `tryve doc getting-started` |
+| [YAML Tests](./sections/yaml-test.md) | Test file syntax and structure | `tryve doc yaml-test` |
+| [Assertions](./sections/assertions.md) | Every operator and assertion shape | `tryve doc assertions` |
+| [Built-in Functions](./sections/built-in-functions.md) | `$uuid`, `$now`, `$jwt`, `$jsonPath`, … | `tryve doc built-in-functions` |
+| [Configuration](./sections/config.md) | `e2e.config.yaml` reference | `tryve doc config` |
+| [CLI](./sections/cli.md) | Commands and flags | `tryve doc cli` |
+| [Examples](./sections/examples.md) | Common patterns and recipes | `tryve doc examples` |
+| [Adapters](./sections/adapters/index.md) | Overview and comparison | `tryve doc adapters` |
 
-### Installation
+Per-adapter references: [http](./sections/adapters/http.md) ·
+[shell](./sections/adapters/shell.md) ·
+[postgresql](./sections/adapters/postgresql.md) ·
+[mongodb](./sections/adapters/mongodb.md) ·
+[redis](./sections/adapters/redis.md) ·
+[kafka](./sections/adapters/kafka.md) ·
+[eventhub](./sections/adapters/eventhub.md)
 
-```bash
-npm install @liemle3893/go-tryve
-```
+Every section is registered in [`sections/index.json`](./sections/index.json),
+which is what `tryve doc` reads.
 
-### Initialize Configuration
+## Other Documents
 
-```bash
-npx e2e init
-```
+| Document | Contents |
+|----------|----------|
+| [Product Overview](./product-overview.md) | What Tryve is for and how it compares to other tools |
+| [Go Port Design](./design/go-port.md) | The architecture decisions behind the current implementation |
 
-### Create Your First Test
+## For Contributors
 
-Create `tests/e2e/hello.test.yaml`:
+- [`CLAUDE.md`](../CLAUDE.md) / [`AGENTS.md`](../AGENTS.md) — repository layout,
+  shared utilities, the adapter checklist, and the Documentation Sync Rule
+- [`TODO.md`](../TODO.md) — backlog and known debt
 
-```yaml
-name: TC-HELLO-001
-description: Simple HTTP health check
-priority: P0
-tags: [smoke, http]
+## Changing Documentation
 
-execute:
-  - adapter: http
-    action: request
-    method: GET
-    url: "{{baseUrl}}/health"
-    assert:
-      status: 200
-```
+`docs/sections/` and `skills/e2e-runner/` are compiled into the binary by
+`embed.go`. A change there only reaches users after `make build`.
 
-### Run Tests
+Any change to CLI commands, adapters, configuration, assertions, built-in
+functions, or YAML syntax must update all three of: the section markdown,
+`sections/index.json`, and `skills/e2e-runner/SKILL.md`. See the Documentation
+Sync Rule in `CLAUDE.md`.
 
-```bash
-npx e2e run --env local
-```
-
-## Key Features
-
-- **YAML-based tests** - Write tests in declarative YAML format
-- **Multi-adapter support** - HTTP, PostgreSQL, Redis, MongoDB, EventHub
-- **4-phase lifecycle** - setup → execute → verify → teardown
-- **Variable interpolation** - Dynamic values with `{{variable}}` syntax
-- **Built-in functions** - UUID, timestamps, random data, file reading
-- **Multiple reporters** - Console, JUnit XML, HTML, JSON
-- **Parallel execution** - Run tests concurrently
-- **Retry logic** - Automatic retry with exponential backoff
-
-## Test Lifecycle
-
-Each test follows a 4-phase execution model:
-
-```
-┌─────────────────────────────────────────────────┐
-│                    TEST                         │
-├─────────────────────────────────────────────────┤
-│  1. SETUP     │ Initialize test data            │
-│  2. EXECUTE   │ Main test actions (required)    │
-│  3. VERIFY    │ Validate results                │
-│  4. TEARDOWN  │ Cleanup test data               │
-└─────────────────────────────────────────────────┘
-```
-
-## Supported Adapters
-
-| Adapter | Purpose | Actions |
-|---------|---------|---------|
-| `http` | REST APIs | request |
-| `postgresql` | PostgreSQL DB | execute, query, queryOne, count |
-| `redis` | Redis cache | get, set, del, exists, incr, hget, hset, hgetall, keys, flushPattern |
-| `mongodb` | MongoDB | insertOne, insertMany, findOne, find, updateOne, updateMany, deleteOne, deleteMany, count, aggregate |
-| `eventhub` | Azure EventHub | publish, waitFor, consume, clear |
-
-## Example Test
-
-```yaml
-name: TC-USER-CRUD-001
-description: Test user creation and retrieval
-priority: P0
-tags: [user, crud, e2e]
-timeout: 30000
-
-variables:
-  test_email: "test-{{$uuid()}}@example.com"
-  test_name: "Test User"
-
-setup:
-  - adapter: postgresql
-    action: execute
-    sql: "DELETE FROM users WHERE email LIKE 'test-%@example.com'"
-
-execute:
-  - adapter: http
-    action: request
-    method: POST
-    url: "{{baseUrl}}/users"
-    headers:
-      Content-Type: "application/json"
-    body:
-      email: "{{test_email}}"
-      name: "{{test_name}}"
-    capture:
-      user_id: "$.id"
-    assert:
-      status: 201
-      json:
-        - path: "$.name"
-          equals: "{{test_name}}"
-
-verify:
-  - adapter: http
-    action: request
-    method: GET
-    url: "{{baseUrl}}/users/{{captured.user_id}}"
-    assert:
-      status: 200
-      json:
-        - path: "$.email"
-          equals: "{{test_email}}"
-
-teardown:
-  - adapter: http
-    action: request
-    method: DELETE
-    url: "{{baseUrl}}/users/{{captured.user_id}}"
-    continueOnError: true
-```
-
-## License
-
-MIT
+Never document a feature that is not implemented. Test authors write against
+these pages, and a documented-but-missing field means their assertions silently
+do nothing.

@@ -34,7 +34,6 @@ services:
     image: mcr.microsoft.com/azure-messaging/eventhubs-emulator:2.1.0
     ports:
       - "127.0.0.1:5672:5672"    # AMQP
-      - "127.0.0.1:9092:9092"    # Kafka
       - "127.0.0.1:5300:5300"    # Health check API
     environment:
       ACCEPT_EULA: "Y"
@@ -60,7 +59,29 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-fortune_play}
     volumes:
       - "postgres-data:/var/lib/postgresql/data"
-      - "./demo-server/init/schema.sql:/docker-entrypoint-initdb.d/schema.sql"
+      - "./cmd/demo-server/schema.sql:/docker-entrypoint-initdb.d/schema.sql"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+  # Redpanda - Kafka-compatible broker for the kafka adapter's E2E tests.
+  # A single binary with no ZooKeeper; auto-creates topics on first use.
+  kafka:
+    image: redpandadata/redpanda:v24.2.7
+    ports:
+      - "127.0.0.1:9092:9092"
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://127.0.0.1:9092
     security_opt:
       - no-new-privileges:true
     cap_drop:
