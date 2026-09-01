@@ -185,8 +185,8 @@ teardown:
 	}
 
 	phaseChecks := []struct {
-		phase string
-		steps []tryve.StepDefinition
+		phase  string
+		steps  []tryve.StepDefinition
 		wantID string
 	}{
 		{"setup", td.Setup, "setup-0"},

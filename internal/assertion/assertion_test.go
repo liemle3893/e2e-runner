@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/liemle3893/go-tryve/internal/assertion"
+	"github.com/liemle3893/go-tryve/internal/tryve"
 )
 
 // TestRunAssertions_HTTPStatus verifies that a single numeric status assertion passes
@@ -17,7 +18,7 @@ func TestRunAssertions_HTTPStatus(t *testing.T) {
 		"status": 200,
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -38,7 +39,7 @@ func TestRunAssertions_FailingAssertion(t *testing.T) {
 		"status": 200,
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestRunAssertions_HTTPStatusArray(t *testing.T) {
 		"status": []any{200, 201, 202},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestRunAssertions_HTTPStatusArrayFail(t *testing.T) {
 		"status": []any{200, 201, 202},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestRunAssertions_StatusRange(t *testing.T) {
 		"statusRange": []any{200, 299},
 	}
 
-	outcomes, err := assertion.RunAssertions(inRange, assertDef)
+	outcomes, err := assertion.RunAssertions(inRange, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -104,7 +105,7 @@ func TestRunAssertions_StatusRange(t *testing.T) {
 		t.Errorf("expected 201 within [200,299] to pass: %s", outcomes[0].Message)
 	}
 
-	outcomes2, err := assertion.RunAssertions(outRange, assertDef)
+	outcomes2, err := assertion.RunAssertions(outRange, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -133,7 +134,7 @@ func TestRunAssertions_JSONPathAssertions(t *testing.T) {
 		},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -152,8 +153,8 @@ func TestRunAssertions_Headers(t *testing.T) {
 	data := map[string]any{
 		"status": 200,
 		"headers": map[string]any{
-			"Content-Type":  "application/json",
-			"X-Request-Id":  "abc123",
+			"Content-Type": "application/json",
+			"X-Request-Id": "abc123",
 		},
 	}
 	assertDef := map[string]any{
@@ -162,7 +163,7 @@ func TestRunAssertions_Headers(t *testing.T) {
 		},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestRunAssertions_Body(t *testing.T) {
 		},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -209,7 +210,7 @@ func TestRunAssertions_Duration(t *testing.T) {
 		},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -236,7 +237,7 @@ func TestRunAssertions_SliceFormat(t *testing.T) {
 		map[string]any{"path": "$.response.active", "equals": true},
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -261,7 +262,7 @@ func TestRunAssertions_DirectOperator(t *testing.T) {
 		"contains": "ell",
 	}
 
-	outcomes, err := assertion.RunAssertions(data, assertDef)
+	outcomes, err := assertion.RunAssertions(data, assertDef, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions returned error: %v", err)
 	}
@@ -276,7 +277,7 @@ func TestRunAssertions_DirectOperator(t *testing.T) {
 // TestRunAssertions_NilAssertDef verifies that nil assertDef returns empty outcomes without error.
 func TestRunAssertions_NilAssertDef(t *testing.T) {
 	data := map[string]any{"status": 200}
-	outcomes, err := assertion.RunAssertions(data, nil)
+	outcomes, err := assertion.RunAssertions(data, nil, tryve.ModernCompat())
 	if err != nil {
 		t.Fatalf("RunAssertions with nil assertDef returned error: %v", err)
 	}

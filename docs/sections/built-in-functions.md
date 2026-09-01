@@ -2,6 +2,22 @@
 
 Complete reference for all built-in functions available in variable interpolation.
 
+## Argument Syntax
+
+An argument may be a literal, a reference the interpolator understands
+(`captured.foo`, a variable name, an environment key), or a nested `{{…}}`
+expression:
+
+```yaml
+{{$upper(captured.region)}}
+{{$jsonPath(captured.result, data.items[0].id)}}
+{{$jwt(HS256, {{$env(JWT_SECRET)}}, {"sub":"123"}, 1h)}}
+```
+
+Arguments are separated by commas that sit outside quotes, parentheses, and
+brackets, so a value containing a comma is safe when quoted:
+`{{$hmac("a,b", key)}}`.
+
 ## Overview
 
 Built-in functions are invoked using the `{{$functionName(args)}}` syntax in YAML tests.
@@ -267,6 +283,104 @@ variables:
 
 ---
 
+## JSON Functions
+
+These read structured data without shelling out to `jq` or `node -e`.
+
+### `$json(value)`
+
+Parse a JSON string into a value.
+
+```yaml
+variables:
+  parsed: "{{$json(captured.raw_response)}}"
+```
+
+A value that is already structured is returned unchanged.
+
+### `$jsonPath(value, path)`
+
+Read a dotted path out of a value, parsing JSON strings along the way. The path
+accepts `a.b`, `a.b[0]`, and `a.b.0`; a leading `$.` is optional.
+
+```yaml
+- adapter: postgresql
+  action: execute
+  sql: "UPDATE promotions SET mode = 'SOFT' WHERE id = $1"
+  params: ["{{$jsonPath(captured.setup_result, promotionId)}}"]
+```
+
+Most of the time you do not need it: a captured JSON string can be addressed
+directly, so `{{captured.setup_result.promotionId}}` says the same thing.
+
+### `$jsonFile(path[, jsonPath])`
+
+Read a JSON file, optionally returning one path within it. Replaces
+`cat file.json | jq -r .some.key`.
+
+```yaml
+variables:
+  api_key: "{{$jsonFile(local.settings.json, Values.INTERNAL_API_KEY)}}"
+```
+
+## Type Functions
+
+An expression that is the whole value keeps its resolved type. These convert
+explicitly when the source type is wrong — most often when a number arrives as
+text from a shell step's stdout.
+
+### `$int(value)` / `$number(value)` / `$bool(value)`
+
+```yaml
+- adapter: postgresql
+  action: query
+  sql: "SELECT * FROM orders WHERE quantity > $1"
+  params: ["{{$int(captured.min_quantity)}}"]    # binds a number, not text
+```
+
+### `$default(value, fallback)`
+
+Return `value` when it resolves to something non-empty, and `fallback`
+otherwise. This is the escape hatch for genuinely optional values when strict
+resolution is on.
+
+```yaml
+headers:
+  Authorization: "{{$default(captured.token, anonymous)}}"
+```
+
+## Auth Functions
+
+### `$jwt(algorithm, key, claims[, lifetime][, keyId])`
+
+Sign a JSON Web Token. Supported algorithms: `HS256`, `RS256`. `claims` is a
+JSON object; `lifetime` is a Go duration (default `1h`). `iat` and `exp` are
+filled in from the lifetime unless the claims already set them.
+
+```yaml
+variables:
+  # Symmetric key
+  token: '{{$jwt(HS256, {{$env(JWT_SECRET)}}, {"sub":"84987654321"}, 1h)}}'
+
+  # RSA key, PEM or base64-encoded PEM, with a key id
+  internal_token: '{{$jwt(RS256, {{$jsonFile(local.settings.json, Values.PRIVATE_KEY)}}, {"sub":"84987654321","scope":"internal"}, 30m, key-1)}}'
+```
+
+This replaces per-test shell steps that call a token-minting script.
+
+### `$hmac(message, key)`
+
+Hex HMAC-SHA256, for signing webhook payloads and API requests.
+
+```yaml
+headers:
+  X-Signature: "{{$hmac({{captured.payload}}, {{$env(WEBHOOK_SECRET)}})}}"
+```
+
+### `$base64url(value)`
+
+Unpadded base64url encoding, the form JWT segments use.
+
 ## TOTP Function
 
 ### `$totp(secret)`
@@ -459,3 +573,13 @@ execute:
 | `$trim(value)` | string | Trimmed | `hello` |
 | `$jsonStringify(value)` | any | JSON string | `{"key":"value"}` |
 | `$totp(secret)` | base32 string | TOTP 6-digit code (RFC 6238) | `482931` |
+| `$json(value)` | any | Parse a JSON string | object/array |
+| `$jsonPath(value, path)` | any, string | Read a path out of a value | varies |
+| `$jsonFile(path[, jsonPath])` | string[, string] | Read a JSON file | varies |
+| `$int(value)` | any | Coerce to an integer | `42` |
+| `$number(value)` | any | Coerce to a number | `42.5` |
+| `$bool(value)` | any | Coerce to a boolean | `true` |
+| `$default(value, fallback)` | any, any | Value, or fallback when unset | varies |
+| `$jwt(alg, key, claims[, ttl][, kid])` | strings | Signed JWT (HS256, RS256) | `eyJhbGci…` |
+| `$hmac(message, key)` | string, string | Hex HMAC-SHA256 | `9f86d081…` |
+| `$base64url(value)` | any | Unpadded base64url | `SGVsbG8` |

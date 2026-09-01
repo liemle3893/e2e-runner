@@ -21,8 +21,6 @@ eventhub:
   consumerGroup: "$Default"
 ```
 
-**Peer dependency:** `npm install @azure/event-hubs`
-
 ## Action: `publish`
 
 Publish message(s) to EventHub.
@@ -79,7 +77,8 @@ Wait for a single message matching a filter. Fails with `TimeoutError` if no mat
       equals: "user.created"
 ```
 
-Filter uses dot-notation for nested matching. All filter fields must match exactly.
+Filter uses dot-notation for nested matching. All filter fields must match
+exactly. `match:` is accepted as a synonym for `filter:`.
 
 ## Action: `clear`
 

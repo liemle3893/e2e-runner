@@ -8,7 +8,13 @@ import (
 )
 
 // configTemplate is the default e2e.config.yaml written by `tryve init`.
-const configTemplate = `version: "1.0"
+const configTemplate = `# Behaviour level. New projects start on tryve/v2, which evaluates every
+# assertion form and preserves resolved types. A project without this key runs at
+# tryve/v1, so pointing a new binary at an existing suite never changes it.
+# Run "tryve doc config" for what differs between the versions.
+apiVersion: tryve/v2
+
+version: "1.0"
 
 environments:
   local:

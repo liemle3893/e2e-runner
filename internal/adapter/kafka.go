@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,8 @@ type KafkaAdapter struct {
 	mechanism sasl.Mechanism // nil when SASL is not configured
 	tls       bool
 
+	compat tryve.CompatMode
+
 	mu      sync.Mutex
 	readers []*kafka.Reader
 	writers []*kafka.Writer
@@ -43,8 +46,15 @@ type KafkaAdapter struct {
 //   - sasl       (map)               — optional SASL config with keys:
 //     mechanism (plain|scram-sha-256|scram-sha-512), username, password
 func NewKafkaAdapter(cfg map[string]any) *KafkaAdapter {
+	return NewKafkaAdapterWithCompat(cfg, tryve.LegacyCompat())
+}
+
+// NewKafkaAdapterWithCompat is NewKafkaAdapter with an explicit compatibility
+// mode selecting whether a produce may create a missing topic.
+func NewKafkaAdapterWithCompat(cfg map[string]any, mode tryve.CompatMode) *KafkaAdapter {
 	a := &KafkaAdapter{
 		timeout: 10 * time.Second,
+		compat:  mode,
 	}
 
 	// -- brokers ----------------------------------------------------------------
@@ -196,57 +206,140 @@ func (a *KafkaAdapter) Execute(ctx context.Context, action string, params map[st
 // Action implementations
 // --------------------------------------------------------------------------
 
-// executeProduce writes a single message to the specified topic.
+// executeProduce writes one or more messages to the specified topic.
 //
-// Required params: topic, value.
-// Optional params: key (string), headers (map[string]any).
+// Required params: topic, plus the payload in one of three forms:
+//
+//	message:  {key, value, headers, partition}   — a single message
+//	messages: [{key, value, …}, …]               — a batch
+//	value: …                                     — the payload alone
+//
+// The nested forms are what the documentation shows; the flat form is the
+// original spelling. All three are accepted, because a test written against the
+// documentation previously produced an empty payload in silence.
 func (a *KafkaAdapter) executeProduce(ctx context.Context, params map[string]any) (*tryve.StepResult, error) {
 	topic := getStrDefault(params, "topic", "")
 	if topic == "" {
 		return nil, tryve.AdapterError("kafka", "produce", "missing required param: topic", nil)
 	}
 
-	msgValue, err := encodeValue(params["value"])
+	specs, err := produceSpecs(params)
 	if err != nil {
-		return nil, tryve.AdapterError("kafka", "produce", "failed to encode value", err)
+		return nil, tryve.AdapterError("kafka", "produce", err.Error(), err)
 	}
 
-	msg := kafka.Message{
-		Topic: topic,
-		Value: msgValue,
-	}
-
-	if k := getStrDefault(params, "key", ""); k != "" {
-		msg.Key = []byte(k)
-	}
-
-	if hv, ok := params["headers"]; ok {
-		if hMap, ok := hv.(map[string]any); ok {
-			for k, v := range hMap {
-				msg.Headers = append(msg.Headers, kafka.Header{
-					Key:   k,
-					Value: []byte(fmt.Sprintf("%v", v)),
-				})
-			}
+	messages := make([]kafka.Message, 0, len(specs))
+	for i, spec := range specs {
+		msg, buildErr := buildMessage(spec)
+		if buildErr != nil {
+			return nil, tryve.AdapterError("kafka", "produce",
+				fmt.Sprintf("message %d: %v", i, buildErr), buildErr)
 		}
+		messages = append(messages, msg)
 	}
 
-	w := a.newWriter(topic)
+	w := a.newWriter(topic, tryve.CompatOrDefault(ctx, a.compat).Modern(tryve.CompatAdapters))
 	a.trackWriter(w)
 	defer func() {
 		_ = w.Close()
 		a.untrackWriter(w)
 	}()
 
-	var duration time.Duration
-	duration, err = MeasureDuration(func() error {
-		return w.WriteMessages(ctx, msg)
+	duration, err := MeasureDuration(func() error {
+		return w.WriteMessages(ctx, messages...)
 	})
 	if err != nil {
 		return nil, tryve.AdapterError("kafka", "produce", "failed to write message", err)
 	}
 
-	return SuccessResult(map[string]any{"ok": true}, duration, nil), nil
+	return SuccessResult(map[string]any{
+		"ok":    true,
+		"count": float64(len(messages)),
+	}, duration, nil), nil
+}
+
+// produceSpecs normalises the accepted payload spellings into a list of message
+// definitions.
+func produceSpecs(params map[string]any) ([]map[string]any, error) {
+	if raw, ok := params["messages"]; ok && raw != nil {
+		items, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("param \"messages\" must be a list, got %T", raw)
+		}
+		if len(items) == 0 {
+			return nil, fmt.Errorf("param \"messages\" must not be empty")
+		}
+		specs := make([]map[string]any, 0, len(items))
+		for i, item := range items {
+			m, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("messages[%d] must be an object, got %T", i, item)
+			}
+			specs = append(specs, m)
+		}
+		return specs, nil
+	}
+
+	if raw, ok := params["message"]; ok && raw != nil {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("param \"message\" must be an object, got %T", raw)
+		}
+		return []map[string]any{m}, nil
+	}
+
+	if _, ok := params["value"]; ok {
+		return []map[string]any{params}, nil
+	}
+
+	return nil, fmt.Errorf("missing payload: set \"message\", \"messages\", or \"value\"")
+}
+
+// buildMessage converts one message definition into a kafka.Message.
+//
+// The topic is deliberately left unset: it belongs to the Writer, and kafka-go
+// rejects a write where both carry one.
+func buildMessage(spec map[string]any) (kafka.Message, error) {
+	value, ok := spec["value"]
+	if !ok {
+		return kafka.Message{}, fmt.Errorf("missing required field: value")
+	}
+
+	encoded, err := encodeValue(value)
+	if err != nil {
+		return kafka.Message{}, fmt.Errorf("failed to encode value: %w", err)
+	}
+
+	msg := kafka.Message{Value: encoded}
+
+	if k := getStrDefault(spec, "key", ""); k != "" {
+		msg.Key = []byte(k)
+	}
+	if p, ok := spec["partition"]; ok {
+		msg.Partition = int(toFloat(p))
+	}
+	if hv, ok := spec["headers"].(map[string]any); ok {
+		for k, v := range hv {
+			msg.Headers = append(msg.Headers, kafka.Header{
+				Key:   k,
+				Value: []byte(fmt.Sprintf("%v", v)),
+			})
+		}
+	}
+	return msg, nil
+}
+
+// toFloat coerces a YAML numeric value to float64.
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case float64:
+		return n
+	}
+	return 0
 }
 
 // executeConsume reads one message from the specified topic/group.
@@ -288,7 +381,8 @@ func (a *KafkaAdapter) executeConsume(ctx context.Context, params map[string]any
 // executeWaitFor reads messages until one matches all conditions in the match
 // map or the operation times out.
 //
-// Required params: topic, match (map[string]any).
+// Required params: topic, and the match criteria as either "filter" (as
+// documented) or "match" (the original spelling; both are accepted).
 // Optional params: timeout (int, ms).
 func (a *KafkaAdapter) executeWaitFor(ctx context.Context, params map[string]any) (*tryve.StepResult, error) {
 	topic := getStrDefault(params, "topic", "")
@@ -296,9 +390,10 @@ func (a *KafkaAdapter) executeWaitFor(ctx context.Context, params map[string]any
 		return nil, tryve.AdapterError("kafka", "waitFor", "missing required param: topic", nil)
 	}
 
-	matchMap, ok := params["match"].(map[string]any)
-	if !ok || len(matchMap) == 0 {
-		return nil, tryve.AdapterError("kafka", "waitFor", "missing or invalid required param: match", nil)
+	matchMap := matchCriteria(params)
+	if len(matchMap) == 0 {
+		return nil, tryve.AdapterError("kafka", "waitFor",
+			"missing or invalid required param: filter (a map of field/value pairs to match)", nil)
 	}
 
 	opTimeout := a.resolveTimeout(params)
@@ -328,7 +423,7 @@ func (a *KafkaAdapter) executeWaitFor(ctx context.Context, params map[string]any
 
 		if messageMatches(msg, matchMap) {
 			var duration time.Duration
-			return SuccessResult(messageToData(msg), duration, nil), nil
+			return SuccessResult(matchedMessageData(msg), duration, nil), nil
 		}
 	}
 }
@@ -391,7 +486,7 @@ func (a *KafkaAdapter) newDialer() *kafka.Dialer {
 }
 
 // newWriter creates a kafka.Writer for the given topic.
-func (a *KafkaAdapter) newWriter(topic string) *kafka.Writer {
+func (a *KafkaAdapter) newWriter(topic string, autoCreateTopic bool) *kafka.Writer {
 	transport := &kafka.Transport{
 		Dial: (&net.Dialer{
 			Timeout: a.timeout,
@@ -404,6 +499,11 @@ func (a *KafkaAdapter) newWriter(topic string) *kafka.Writer {
 		Addr:      kafka.TCP(a.brokers...),
 		Topic:     topic,
 		Transport: transport,
+		// Tests routinely produce to a topic that does not exist yet. Without
+		// this the first produce fails with "Unknown Topic Or Partition" and the
+		// test author has to provision the topic out of band. Creating topics is
+		// a behaviour change, so it follows the adapters area.
+		AllowAutoTopicCreation: autoCreateTopic,
 	}
 	if a.clientID != "" {
 		// kafka.Writer does not expose ClientID directly; set via Balancer metadata.
@@ -510,12 +610,26 @@ func messageToData(msg kafka.Message) map[string]any {
 	}
 }
 
-// messageMatches returns true when every key/value pair in matchMap equals the
-// corresponding field in the message data map.
+// messageMatches returns true when every key/value pair in matchMap is satisfied
+// by the message.
+//
+// Filter keys address the decoded message body with dot-notation
+// ("type", "data.userId"), which is what a producer's payload looks like to the
+// test author. Envelope fields (key, topic, partition, offset, headers) are also
+// matchable, so a filter can select on either.
+//
+// Matching the envelope's top level alone — as this once did — meant a filter on
+// a body field never matched anything, and waitFor simply waited out its timeout.
 func messageMatches(msg kafka.Message, matchMap map[string]any) bool {
 	data := messageToData(msg)
+	body := data["value"]
+
 	for k, want := range matchMap {
-		got, ok := data[k]
+		got, ok := lookupDotted(body, k)
+		if !ok {
+			// Fall back to the envelope for key/topic/partition/offset/headers.
+			got, ok = lookupDotted(data, k)
+		}
 		if !ok {
 			return false
 		}
@@ -524,6 +638,61 @@ func messageMatches(msg kafka.Message, matchMap map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// lookupDotted walks a dot-separated path through nested maps and slices.
+func lookupDotted(root any, path string) (any, bool) {
+	cur := root
+	for _, seg := range strings.Split(path, ".") {
+		switch typed := cur.(type) {
+		case map[string]any:
+			v, ok := typed[seg]
+			if !ok {
+				return nil, false
+			}
+			cur = v
+		case []any:
+			idx, err := strconv.Atoi(seg)
+			if err != nil || idx < 0 || idx >= len(typed) {
+				return nil, false
+			}
+			cur = typed[idx]
+		default:
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+// matchedMessageData shapes the result of a successful waitFor.
+//
+// The decoded payload's fields sit at the top level so `path: "data.message"`
+// and `capture: {id: "data.id"}` address the payload directly, matching how
+// filters are written.
+//
+// The envelope fields (key, value, headers, topic, partition, offset) are kept
+// alongside them, so an existing assertion on `$.value.type` or `$.key` keeps
+// working. Payload fields win a name collision, since those are what the
+// documented paths refer to; the untouched envelope is always available under
+// "message".
+func matchedMessageData(msg kafka.Message) map[string]any {
+	envelope := messageToData(msg)
+
+	body, ok := envelope["value"].(map[string]any)
+	if !ok {
+		// A non-object payload (a bare string or number) has no fields to lift.
+		return envelope
+	}
+
+	data := make(map[string]any, len(envelope)+len(body)+1)
+	for k, v := range envelope {
+		data[k] = v
+	}
+	data["message"] = envelope
+	for k, v := range body {
+		data[k] = v
+	}
+	return data
 }
 
 // resolveTimeout extracts an optional "timeout" param (ms) from params,

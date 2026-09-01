@@ -19,8 +19,6 @@ Connection settings (fixed, not configurable):
 - `maxRetriesPerRequest`: 3
 - `retryStrategy`: exponential backoff (200ms, 400ms, 600ms), stops after 3 attempts
 
-**Peer dependency:** `npm install ioredis`
-
 ## Action: `get`
 
 Get string value.

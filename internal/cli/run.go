@@ -25,9 +25,17 @@ import (
 // executes YAML test files with the configured adapters.
 func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run",
+		Use:   "run [path...]",
 		Short: "Discover and run YAML test files",
-		RunE:  runCmdHandler,
+		Long: "Discover and run YAML test files.\n\n" +
+			"Each path may be a test file, a directory to search, or a glob. With no path,\n" +
+			"the configured testDir is searched.\n\n" +
+			"Examples:\n" +
+			"  tryve run\n" +
+			"  tryve run tests/e2e/users/TC-USER-001.test.yaml\n" +
+			"  tryve run tests/e2e/users tests/e2e/auth\n" +
+			"  tryve run 'tests/e2e/**/TC-AUTH-*.test.yaml'",
+		RunE: runCmdHandler,
 	}
 
 	cmd.Flags().StringP("test-dir", "d", "tests", "directory to search for test files")
@@ -47,12 +55,15 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().Bool("debug", false, "show full request/response data for every step")
 	cmd.Flags().Bool("watch", false, "re-run tests on file changes")
 	cmd.Flags().Bool("failed-only", false, "re-run only tests that failed in the previous run")
+	cmd.Flags().Bool("strict", false, "fail a step when a {{expression}} cannot be resolved (default: config defaults.strictResolve)")
+	cmd.Flags().String("api-version", "",
+		"behaviour level for this run: tryve/v1 (previous) or tryve/v2 (current); overrides the config")
 
 	return cmd
 }
 
 // runCmdHandler implements the `run` command execution logic.
-func runCmdHandler(cmd *cobra.Command, _ []string) error {
+func runCmdHandler(cmd *cobra.Command, args []string) error {
 	// Set up cancellable context tied to OS interrupts.
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -79,6 +90,8 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	outputPath, _ := cmd.Flags().GetString("output")
 	watchMode, _ := cmd.Flags().GetBool("watch")
 	failedOnly, _ := cmd.Flags().GetBool("failed-only")
+	strict, _ := cmd.Flags().GetBool("strict")
+	apiVersionFlag, _ := cmd.Flags().GetString("api-version")
 
 	// Load configuration.
 	cfg, err := config.Load(cfgPath, envName)
@@ -96,6 +109,16 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	if retries >= 0 {
 		cfg.Defaults.Retries = retries
 	}
+	if cmd.Flags().Changed("strict") {
+		cfg.Defaults.StrictResolve = strict
+	}
+	if apiVersionFlag != "" {
+		mode, versionErr := tryve.ParseAPIVersion(apiVersionFlag)
+		if versionErr != nil {
+			return fmt.Errorf("--api-version: %w", versionErr)
+		}
+		cfg.Compat = mode
+	}
 
 	// Use config testDir if CLI flag wasn't explicitly set.
 	// testDir in config is relative to the config file, not CWD.
@@ -104,9 +127,19 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Discover test files once; used by both dry-run and watch/run paths.
-	paths, err := loader.Discover(testDir)
+	// Positional arguments name files, directories, or globs to run; without any,
+	// the configured test directory is searched.
+	targets := args
+	if len(targets) == 0 {
+		targets = []string{testDir}
+	}
+
+	paths, err := loader.DiscoverAll(targets)
 	if err != nil {
-		return fmt.Errorf("discovering tests in %q: %w", testDir, err)
+		return err
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("no test files found in %s", strings.Join(targets, ", "))
 	}
 
 	filterOpts := executor.FilterOptions{Tags: tags, Grep: grep, Priority: priority}
@@ -190,36 +223,16 @@ func runCmdHandler(cmd *cobra.Command, _ []string) error {
 	}
 	rep := reporter.NewMulti(reporters...)
 
-	// Build adapter registry.
-	reg := adapter.NewRegistry()
-
-	// HTTP adapter: available when baseURL is configured.
-	if cfg.Environment.BaseURL != "" {
-		reg.Register("http", adapter.NewHTTPAdapter(cfg.Environment.BaseURL))
-	}
-
-	// Shell adapter is always available.
-	reg.Register("shell", adapter.NewShellAdapter(&adapter.ShellConfig{}))
-
-	// Register adapters from the environment config block.
-	for name, adapterCfg := range cfg.Environment.Adapters {
-		switch name {
-		case "http", "shell":
-			// Already registered above; skip duplicate.
-		case "postgresql":
-			reg.Register("postgresql", adapter.NewPostgreSQLAdapter(adapterCfg))
-		case "mongodb":
-			reg.Register("mongodb", adapter.NewMongoDBAdapter(adapterCfg))
-		case "redis":
-			reg.Register("redis", adapter.NewRedisAdapter(adapterCfg))
-		case "kafka":
-			reg.Register("kafka", adapter.NewKafkaAdapter(adapterCfg))
-		case "eventhub":
-			reg.Register("eventhub", adapter.NewEventHubAdapter(adapterCfg))
-		default:
-			fmt.Fprintf(os.Stderr, "WARN  unknown adapter %q in config — skipping\n", name)
-		}
-	}
+	// Build the adapter registry. One builder serves the run and health commands
+	// and the library API, so an adapter cannot be registered for one and missing
+	// from another.
+	reg := adapter.BuildRegistry(adapter.RegistryOptions{
+		BaseURL:   cfg.Environment.BaseURL,
+		Adapters:  cfg.Environment.Adapters,
+		ConfigDir: adapter.ConfigDirOf(cfgPath),
+		Compat:    cfg.Compat,
+		Warn:      os.Stderr,
+	})
 	defer reg.CloseAll(ctx)
 
 	// Pre-warm: connect required adapters in parallel before the first test.

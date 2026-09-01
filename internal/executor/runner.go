@@ -29,6 +29,12 @@ type phaseEntry struct {
 //   - rep            – reporter that receives lifecycle events.
 //   - defaultRetries – retry count used when td.Retries is not set (0 = no retries).
 //   - defaultRetryDelay – base retry back-off delay in milliseconds.
+//   - baseURL        – base URL that {{baseUrl}} resolves to.
+//   - configVars     – suite-level variables, overridden by the test's own.
+//   - strictResolve  – fail a step whose {{…}} expression cannot be resolved
+//     instead of passing the raw token through to the system under test.
+//   - compat         – which behaviours use their current semantics; the zero
+//     value keeps every area on its pre-v2 behaviour.
 //
 // If td.Skip is true the function returns immediately with StatusSkipped without
 // calling any reporter methods beyond OnTestStart/OnTestComplete.
@@ -41,6 +47,8 @@ func RunTest(
 	defaultRetryDelay int,
 	baseURL string,
 	configVars map[string]any,
+	strictResolve bool,
+	compat tryve.CompatMode,
 ) *tryve.TestResult {
 	// 1. Early-return for skipped tests.
 	if td.Skip {
@@ -76,6 +84,22 @@ func RunTest(
 	// 4. Build the interpolation context seeded with config + test variables.
 	interpCtx := tryve.NewInterpolationContext()
 	interpCtx.BaseURL = baseURL
+	interpCtx.Strict = strictResolve
+	// A test file may declare its own apiVersion, so a suite can move to tryve/v2
+	// while individual files stay on tryve/v1 until they are worked through.
+	if td.APIVersion != nil || td.Compatibility != nil {
+		fileCompat, compatErr := tryve.ResolveLevel(td.APIVersion, td.Compatibility)
+		if compatErr != nil {
+			result = &tryve.TestResult{
+				Test:   td,
+				Status: tryve.StatusFailed,
+				Error:  fmt.Errorf("in %s: %w", td.SourceFile, compatErr),
+			}
+			return result
+		}
+		compat = fileCompat
+	}
+	interpCtx.Compat = compat
 
 	// Populate environment variables from the process.
 	for _, entry := range os.Environ() {
@@ -145,6 +169,14 @@ func RunTest(
 
 		for i := range pe.steps {
 			step := &pe.steps[i]
+
+			// A step-level skip was ignored before the execution area changed.
+			if step.Skip && interpCtx.Compat.Modern(tryve.CompatExecution) {
+				outcome := &tryve.StepOutcome{Step: step, Phase: pe.phase, Status: tryve.StatusSkipped}
+				steps = append(steps, *outcome)
+				_ = rep.OnStepComplete(runCtx, step, outcome)
+				continue
+			}
 
 			outcome, _ := ExecuteStepWithRetry(runCtx, step, registry, interpCtx, maxRetries, baseDelay)
 

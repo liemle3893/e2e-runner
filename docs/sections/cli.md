@@ -4,305 +4,407 @@ Complete reference for all CLI commands and options.
 
 ## Installation
 
-```bash
-# Local installation
-npm install @liemle3893/go-tryve
+Tryve is a single binary with no runtime dependencies.
 
-# Global installation
-npm install -g @liemle3893/go-tryve
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/liemle3893/go-tryve/main/install.sh | sh
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/liemle3893/go-tryve/main/install.ps1 | iex
+
+# Go toolchain
+go install github.com/liemle3893/go-tryve/cmd/tryve@latest
+
+# From source
+git clone https://github.com/liemle3893/go-tryve.git && cd go-tryve && make build
 ```
 
 ## Commands Overview
 
 | Command | Description |
 |---------|-------------|
-| `e2e run` | Execute E2E tests (default) |
-| `e2e validate` | Validate test files without execution |
-| `e2e list` | List discovered tests |
-| `e2e health` | Check adapter connectivity |
-| `e2e init` | Initialize project structure and config |
-| `e2e test create <name>` | Create test from template |
-| `e2e test list-templates` | List available test templates |
-| `e2e doc [section]` | Show bundled documentation |
-| `e2e install --skills` | Install Claude Code skill bundle |
+| `tryve run` | Execute E2E tests (default) |
+| `tryve validate` | Validate test files without execution |
+| `tryve list` | List discovered tests |
+| `tryve health` | Check adapter connectivity |
+| `tryve init` | Initialize project structure and config |
+| `tryve migrate` | Move a suite to a new compatibility level |
+| `tryve test create <name>` | Create test from template |
+| `tryve test list-templates` | List available test templates |
+| `tryve doc [section]` | Show bundled documentation |
+| `tryve install --skills` | Install Claude Code skill bundle |
 
 ---
 
-## `e2e run`
+## `tryve run`
 
 Execute E2E tests with filtering and execution options.
 
 ```bash
-e2e run [options] [patterns...]
+tryve run [options] [path...]
 ```
+
+Each path may be a **test file**, a **directory** to search recursively, or a
+**glob** (including `**`). With no path, the configured `testDir` is searched.
+A path that matches no test is an error, so a typo is reported rather than
+silently running a different set of tests.
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-c, --config <path>` | Config file path | `e2e.config.yaml` |
-| `-e, --env <name>` | Environment name | `local` |
-| `-d, --test-dir <path>` | Test directory | Config `testDir` or `.` |
-| `--report-dir <path>` | Report output directory | `./reports` |
-| `-p, --parallel <n>` | Parallel test count | `1` |
-| `-t, --timeout <ms>` | Test timeout | `30000` |
-| `-r, --retries <n>` | Retry failed tests | `0` |
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-e, --env <name>` | Environment name (global flag) | `local` |
+| `-d, --test-dir <path>` | Test directory | Config `testDir` or `tests` |
+| `-p, --parallel <n>` | Parallel test count (0 = config default) | `0` |
+| `-t, --timeout <ms>` | Per-test timeout (0 = config default) | `0` |
+| `-r, --retries <n>` | Retry failed tests (-1 = config default) | `-1` |
 | `--bail` | Stop on first failure | `false` |
-| `--watch` | Watch mode | `false` |
-| `-g, --grep <pattern>` | Filter by name regex | |
+| `--watch` | Re-run tests on file changes | `false` |
+| `-g, --grep <pattern>` | Filter by name (regex or substring) | |
 | `--tag <tag>` | Filter by tag (repeatable) | |
-| `--priority <level>` | Filter by priority (repeatable) | |
+| `--priority <level>` | Filter by priority (`P0`–`P3`; single value) | |
 | `--skip-setup` | Skip setup phase | `false` |
 | `--skip-teardown` | Skip teardown phase | `false` |
 | `--dry-run` | List tests without execution | `false` |
 | `--failed-only` | Rerun only previously failed tests | `false` |
-| `--reporter <type>` | Reporter type (repeatable) | `console` |
-| `-o, --output <path>` | Report output path | |
-| `--debug` | Enable debug logging | `false` |
-| `--step-by-step` | Step-by-step execution mode | `false` |
-| `--capture-traffic` | Capture network traffic | `false` |
-| `-v, --verbose` | Verbose output | `false` |
-| `-q, --quiet` | Errors only | `false` |
-| `--no-color` | Disable colors | `false` |
+| `--strict` | Fail a step when a `{{expression}}` cannot be resolved | Config `defaults.strictResolve` |
+| `--api-version <v>` | Behaviour level: `tryve/v1` (previous) or `tryve/v2` (current) | Config `apiVersion`, else `tryve/v1` |
+| `--reporter <type>` | Additional reporter: `junit`, `html`, `json` (repeatable) | `console` |
+| `-o, --output <path>` | Output file for file-based reporters | |
+| `--verbose` | Show per-step output | `false` |
+| `--debug` | Show full request/response data for every step | `false` |
 
 ### Examples
 
 **Basic run:**
 ```bash
 # Run all tests in local environment
-e2e run --env local
+tryve run --env local
 
 # Run with specific config
-e2e run --config ./custom-config.yaml --env staging
+tryve run --config ./custom-config.yaml --env staging
 ```
 
 **Filtering:**
 ```bash
 # Filter by name pattern
-e2e run --grep "user"
-e2e run --grep "TC-USER-.*"
+tryve run --grep "user"
+tryve run --grep "TC-USER-.*"
 
 # Filter by tag (all tags must match)
-e2e run --tag smoke
-e2e run --tag e2e --tag user
+tryve run --tag smoke
+tryve run --tag e2e --tag user
 
 # Filter by priority
-e2e run --priority P0
-e2e run --priority P0 --priority P1
+tryve run --priority P0
+tryve run --priority P0 --priority P1
 
 # Combine filters
-e2e run --grep "create" --tag user --priority P0
+tryve run --grep "create" --tag user --priority P0
 ```
 
 **Execution control:**
 ```bash
 # Run 4 tests in parallel
-e2e run --parallel 4
+tryve run --parallel 4
 
 # Set timeout to 60 seconds
-e2e run --timeout 60000
+tryve run --timeout 60000
 
 # Retry failed tests 3 times
-e2e run --retries 3
+tryve run --retries 3
 
 # Stop on first failure
-e2e run --bail
+tryve run --bail
 ```
 
 **Phase control:**
 ```bash
 # Skip setup phase (use existing data)
-e2e run --skip-setup
+tryve run --skip-setup
 
 # Skip teardown (keep test data)
-e2e run --skip-teardown
+tryve run --skip-teardown
 ```
 
 **Reporting:**
 ```bash
 # Multiple reporters
-e2e run --reporter console --reporter junit --reporter html
+tryve run --reporter junit --reporter html
 
 # Specify output paths
-e2e run --reporter junit -o ./reports/results.xml
-
-# Custom report directory
-e2e run --report-dir ./test-reports
+tryve run --reporter junit -o ./reports/results.xml
 
 # Debug mode
-e2e run --debug --verbose
+tryve run --debug --verbose
 ```
 
 **Dry run:**
 ```bash
 # List tests without running
-e2e run --dry-run
-e2e run --dry-run --grep "user"
+tryve run --dry-run
+tryve run --dry-run --grep "user"
 ```
 
 **Rerun failures:**
 ```bash
 # After a run with failures, rerun only those that failed
-e2e run --failed-only
+tryve run --failed-only
 
 # Combine with other options
-e2e run --failed-only --retries 2
+tryve run --failed-only --retries 2
 ```
 
-**Test directory:**
+**Choosing what to run:**
 ```bash
-# Run tests from current directory (default)
-e2e run
+# Everything under the configured testDir
+tryve run
 
-# Run tests from a specific directory
-e2e run --test-dir ./tests/e2e
-e2e run -d ./integration-tests
+# One file — the fastest way to iterate on a single test
+tryve run tests/e2e/users/TC-USER-001.test.yaml
 
-# Using environment variable
-E2E_TEST_DIR=./tests/e2e e2e run
+# Several directories
+tryve run tests/e2e/users tests/e2e/auth
+
+# A glob (quote it so the shell does not expand it first)
+tryve run 'tests/e2e/**/TC-AUTH-*.test.yaml'
+
+# The --test-dir flag still works and is equivalent to a single directory path
+tryve run --test-dir ./tests/e2e
+```
+
+Naming files directly also skips parsing the rest of the suite, so a single-test
+run starts in milliseconds rather than seconds.
+
+**Behaviour level:**
+```bash
+# See what adopting the current behaviour would do, without editing the config
+tryve run --api-version tryve/v2
+
+# Hold a run to the previous behaviour
+tryve run --api-version tryve/v1
+```
+
+An absent `apiVersion` in the config means `tryve/v1`, so pointing a new binary
+at an existing suite never changes how it behaves. Run `tryve doc config` for
+what differs between the versions.
+
+**Strict resolution:**
+```bash
+# Fail the step when {{captured.typo}} resolves to nothing, instead of sending
+# the literal text "{{captured.typo}}" to the system under test
+tryve run --strict
 ```
 
 ---
 
-## `e2e validate`
+## `tryve migrate`
 
-Validate test files and configuration without executing tests.
+Move a suite to a new compatibility level. A suite of any size cannot be
+migrated by reviewing every file at once, so this raises the suite's level and
+**pins the affected files to their current one** — the suite keeps passing
+exactly as it does today, and each pinned file is then worked through
+individually.
 
 ```bash
-e2e validate [options] [patterns...]
+tryve migrate [path...]
+```
+
+Nothing is written without `--apply`.
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-d, --test-dir <path>` | Test directory | Config `testDir` |
+| `--to <version>` | Target apiVersion | `tryve/v2` |
+| `--area <name>` | Limit to `assertions`, `interpolation`, `execution`, or `adapters` (repeatable) | all |
+| `--apply` | Write: raise the config, pin affected files | `false` |
+| `--explain` | List every difference in the named files | `false` |
+| `--status` | Report how many files are still pinned | `false` |
+| `--unpin` | Remove the pin from the named files | `false` |
+| `--only-certain` | Pin only files that provably change, not those that merely may | `false` |
+
+### The migration
+
+```bash
+# 1. See what would change
+tryve migrate
+
+# 2. Raise the suite, pinning what would break
+tryve migrate --apply
+
+# 3. Confirm nothing moved
+tryve run
+
+# 4. Work through the pinned files one at a time
+tryve migrate --status
+tryve migrate --explain tests/e2e/users/TC-USER-001.test.yaml
+#    …fix what it reports, then:
+tryve migrate --unpin tests/e2e/users/TC-USER-001.test.yaml
+tryve run tests/e2e/users/TC-USER-001.test.yaml
+```
+
+Take one area at a time on a large suite — `assertions` first, since that is
+where checks that never ran are:
+
+```bash
+tryve migrate --area assertions --apply
+```
+
+### Certainty
+
+Each difference is reported as **will change** — decidable from the file, such
+as an assertion form that was discarded — or **may change**, which depends on
+runtime values: whether a captured value is a number, whether a response body is
+an array, how long a command takes.
+
+`--apply` pins both by default, because a difference that only *may* materialise
+still breaks the suite when it does. `--only-certain` narrows the pin set for a
+tighter diff, at the cost of a suite that may not be green immediately.
+
+### Pins
+
+A pin is an `apiVersion` at the top of a test file, overriding the suite's level
+for that file alone:
+
+```yaml
+# Pinned by `tryve migrate`: this file relies on behaviour that changed.
+# Run `tryve migrate --explain <this file>` for what differs, fix what it
+# reports, then delete these three lines to move it to the suite's level.
+apiVersion: tryve/v1
+
+name: TC-USER-001
+```
+
+With `--area`, the suite gains a `compatibility` refinement instead of a new
+`apiVersion`, and files are pinned to the version they are on today.
+
+Pinning is purely additive — comments, key order, and block scalars are left
+byte-for-byte intact, so the diff is reviewable.
+
+---
+
+## `tryve validate`
+
+Parse and validate test files without executing them.
+
+```bash
+tryve validate [options]
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-c, --config <path>` | Config file path | `e2e.config.yaml` |
-| `-e, --env <name>` | Environment name | `local` |
-| `-d, --test-dir <path>` | Test directory | Config `testDir` or `.` |
-| `-v, --verbose` | Verbose output | `false` |
-| `-q, --quiet` | Errors only | `false` |
-| `--no-color` | Disable colors | `false` |
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-e, --env <name>` | Environment name (global flag) | `local` |
+| `-d, --test-dir <path>` | Test directory | Config `testDir` or `tests` |
 
 ### Examples
 
 ```bash
 # Validate all tests
-e2e validate --env local
+tryve validate --env local
 
 # Validate specific directory
-e2e validate --test-dir tests/e2e/users
+tryve validate --test-dir tests/e2e/users
 
-# Verbose validation
-e2e validate --verbose
+# Validate one file
+tryve validate --test-dir tests/e2e/users/TC-USER-001.test.yaml
 ```
 
 ### What it validates:
 
-- Configuration file syntax and structure
-- YAML test file syntax and schema
-- TypeScript test file syntax and exports
-- Required fields (name, execute)
-- Adapter action validity
+- YAML test file syntax
+- Required fields (`name`, at least one `execute` step)
+- `priority`, `timeout`, and `retries` are within range
+- Every step names a known adapter and an action that adapter supports
+- Per-adapter required params (`url` for http, `command` for shell, `sql` for
+  postgresql, and so on)
+
+It does not connect to anything — use `tryve health` for that.
 
 ---
 
-## `e2e list`
+## `tryve list`
 
-List discovered tests with metadata.
+List discovered test files and their metadata.
 
 ```bash
-e2e list [options] [patterns...]
+tryve list [options]
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-c, --config <path>` | Config file path | `e2e.config.yaml` |
-| `-e, --env <name>` | Environment name | `local` |
-| `-d, --test-dir <path>` | Test directory | Config `testDir` or `.` |
-| `-g, --grep <pattern>` | Filter by name regex | |
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-e, --env <name>` | Environment name (global flag) | `local` |
+| `-d, --test-dir <path>` | Test directory | Config `testDir` or `tests` |
+| `-g, --grep <pattern>` | Filter by name (regex or substring) | |
 | `--tag <tag>` | Filter by tag (repeatable) | |
-| `--priority <level>` | Filter by priority (repeatable) | |
-| `-o, --output <format>` | Output format (`json` for JSON) | table |
-| `-v, --verbose` | Verbose output | `false` |
-| `-q, --quiet` | Errors only | `false` |
-| `--no-color` | Disable colors | `false` |
+| `--priority <level>` | Filter by priority (`P0`–`P3`; single value) | |
 
 ### Examples
 
 ```bash
 # List all tests
-e2e list
+tryve list
 
 # List with filters
-e2e list --tag smoke
-e2e list --priority P0
+tryve list --tag smoke
+tryve list --priority P0
 
-# Verbose output (shows file path, skip reasons)
-e2e list --verbose
-
-# JSON output (for scripting)
-e2e list --output json
+# Filter, then list
+tryve list --tag smoke --priority P0
 ```
 
 ### Output
 
 ```
-Discovered E2E Tests
-================================================================================
+  Discovered Tests
+  ────────────────────────────────────────────────────────
 
-  Name                                    Type        Priority  Tags
-  ------------------------------------------------------------------------------
-  TC-USER-001                             YAML        P0        user, crud
-  TC-ORDER-001                            YAML        P1        order, e2e
-  TC-CACHE-001                            YAML        P0        redis, cache
-  TC-HEALTH-001                           TypeScript  P0        smoke
-  TC-INT-001                              YAML        P1        integration
+   P0   TC-USER-001  #user #crud
+        /repo/tests/e2e/users/TC-USER-001.test.yaml
+   P1   TC-ORDER-001  #order #e2e
+        /repo/tests/e2e/orders/TC-ORDER-001.test.yaml
 
-Summary
-----------------------------------------
-  Total tests:      5
-  YAML tests:       4
-  TypeScript tests: 1
-
-  By Priority:
-    P0 (Critical):  3
-    P1 (High):      2
-    P2 (Medium):    0
-    P3 (Low):       0
+  ────────────────────────────────────────────────────────
+  2 test(s)  P0:1  P1:1
 ```
 
 ---
 
-## `e2e health`
+## `tryve health`
 
 Check adapter connectivity and health.
 
 ```bash
-e2e health [options]
+tryve health [options]
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-c, --config <path>` | Config file path | `e2e.config.yaml` |
-| `-e, --env <name>` | Environment name | `local` |
-| `--adapter <type>` | Check specific adapter | All |
-| `-v, --verbose` | Verbose output | `false` |
-| `-q, --quiet` | Errors only | `false` |
-| `--no-color` | Disable colors | `false` |
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-e, --env <name>` | Environment name (global flag) | `local` |
+
+`health` checks every adapter configured for the active environment.
 
 ### Examples
 
 ```bash
 # Check all adapters
-e2e health --env local
+tryve health --env local
 
 # Check specific adapter
-e2e health --env local --adapter postgresql
-e2e health --env staging --adapter redis
+tryve health --env staging
 ```
 
 ### Output
@@ -332,42 +434,36 @@ Summary
 
 ---
 
-## `e2e init`
+## `tryve init`
 
 Initialize E2E test project structure with configuration, example tests, schemas, and environment template.
 
 ```bash
-e2e init [options]
+tryve init [options]
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-v, --verbose` | Verbose output | `false` |
-| `-q, --quiet` | Errors only | `false` |
-| `--no-color` | Disable colors | `false` |
+| `-c, --config <path>` | Config file path (global flag) | `e2e.config.yaml` |
+| `-e, --env <name>` | Environment name (global flag) | `local` |
 
 ### Examples
 
 ```bash
 # Initialize project structure
-e2e init
+tryve init
 ```
 
 ### What it creates:
 
-**Directories:**
-- `tests/e2e/` — Main test directory
-- `tests/e2e/schemas/` — JSON schema files for validation
-- `tests/e2e/examples/` — Example test files
-- `tests/e2e/reports/` — Report output directory
-- `tests/e2e/fixtures/` — Test fixture data
+A single starter `e2e.config.yaml` in the current directory, with a `local`
+environment and commented adapter blocks to fill in.
 
-**Files:**
-- `tests/e2e/e2e.config.yaml` — Configuration file
-- `tests/e2e/examples/TC-EXAMPLE-001.test.yaml` — Example YAML test
-- `tests/e2e/examples/TC-EXAMPLE-002.test.ts` — Example TypeScript test
+An existing `e2e.config.yaml` is never overwritten.
+
+To create your first test afterwards, use `tryve test create <name>`.
 - `tests/e2e/schemas/e2e-config.schema.json` — Config JSON schema
 - `tests/e2e/schemas/e2e-test.schema.json` — Test file JSON schema
 - `.env.e2e.example` — Environment variable template
@@ -409,61 +505,53 @@ reporters:
 
 ---
 
-## `e2e test create <name>`
+## `tryve test create <name>`
 
 Create a new test file from a template.
 
 ```bash
-e2e test create <name> [options]
+tryve test create <name> [options]
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--template <type>`, `-T` | Template type | `api` |
-| `--description <text>`, `-D` | Test description | `E2E test for <name>` |
-| `-o, --output <path>` | Output directory | Config `testDir` or `.` |
-| `--test-priority <level>` | Priority: P0, P1, P2, P3 | `P0` |
-| `--test-tags <tags>` | Comma-separated tags | `e2e` |
+| `-t, --template <type>` | Template to use: `http` or `shell` | `http` |
+| `-o, --output <path>` | Output file path | `<name>.test.yaml` |
+
+Run `tryve test list-templates` for the current list.
 
 ### Templates
 
 | Template | Description |
 |----------|-------------|
-| `api` | Simple API test (GET/POST with assertions) |
-| `crud` | Full CRUD operations with DB verification |
-| `integration` | Multi-adapter test (HTTP + PostgreSQL + Redis + MongoDB) |
-| `event-driven` | EventHub publish/consume pattern |
-| `db-verification` | Direct database assertion patterns |
+| `http` | HTTP request with status and JSON body assertions |
+| `shell` | Shell command with exit-code and stdout assertions |
 
 ### Examples
 
 ```bash
-# Create a basic API test (default template)
-e2e test create user-crud
+# Create an HTTP test (default template) as ./user-crud.test.yaml
+tryve test create user-crud
 
-# Create with specific template
-e2e test create order-flow --template crud
-e2e test create user-sync -T integration
+# Create a shell test
+tryve test create check-migrations --template shell
 
-# Specify description and tags
-e2e test create login-flow --template api --description "Login authentication flow" --test-tags "auth,smoke"
-
-# Output to specific directory
-e2e test create TC-PAYMENT-001 --template crud -o ./tests/e2e/payments
-
-# Creates: ./tests/e2e/payments/TC-PAYMENT-001.test.yaml
+# Write to a specific path
+tryve test create TC-PAYMENT-001 -o ./tests/e2e/payments/TC-PAYMENT-001.test.yaml
 ```
+
+The generated file is a starting point — fill in the URL, assertions, and tags.
 
 ---
 
-## `e2e test list-templates`
+## `tryve test list-templates`
 
 List all available test templates.
 
 ```bash
-e2e test list-templates
+tryve test list-templates
 ```
 
 ### Output
@@ -480,12 +568,12 @@ Available templates:
 
 ---
 
-## `e2e doc`
+## `tryve doc`
 
 Display bundled documentation sections. When invoked without arguments, lists all available sections. When a section name is provided, prints the full content of that section to stdout.
 
 ```bash
-e2e doc [section]
+tryve doc [section]
 ```
 
 ### Available Sections
@@ -510,22 +598,22 @@ e2e doc [section]
 
 ```bash
 # List all available documentation sections
-e2e doc
+tryve doc
 
 # View a specific section
-e2e doc assertions
-e2e doc adapters.http
-e2e doc yaml-test
+tryve doc assertions
+tryve doc adapters.http
+tryve doc yaml-test
 ```
 
 ---
 
-## `e2e install`
+## `tryve install`
 
 Install bundled assets into the current project. Currently supports installing the Claude Code skill bundle.
 
 ```bash
-e2e install --skills
+tryve install --skills
 ```
 
 ### Options
@@ -538,18 +626,18 @@ When invoked without `--skills`, the command prints usage help.
 
 ### What it installs
 
-Running `e2e install --skills` copies the following into your project:
+Running `tryve install --skills` copies the following into your project:
 
 - `.claude/skills/e2e-runner/SKILL.md` -- The main skill bundle file
 - `.claude/skills/e2e-runner/references/` -- All documentation section files (mirrors `docs/sections/`)
 
-The `references/` directory contains the same markdown files available via `e2e doc`, allowing Claude Code to reference them directly as skill context.
+The `references/` directory contains the same markdown files available via `tryve doc`, allowing Claude Code to reference them directly as skill context.
 
 ### Examples
 
 ```bash
 # Install Claude Code skills to the current project
-e2e install --skills
+tryve install --skills
 ```
 
 ---
@@ -570,10 +658,10 @@ e2e install --skills
 
 ```bash
 # Exit with appropriate code
-e2e run --env staging || exit 1
+tryve run --env staging || exit 1
 
 # Check specific exit code
-e2e run --env staging
+tryve run --env staging
 case $? in
   0) echo "All tests passed" ;;
   1) echo "Tests failed" ;;
@@ -607,5 +695,5 @@ export E2E_ENV=staging
 export E2E_REPORT_DIR=./test-reports
 
 # Now runs with these defaults
-e2e run
+tryve run
 ```

@@ -41,8 +41,6 @@ kafka:
     password: "${KAFKA_PASSWORD}"
 ```
 
-**Peer dependency:** `npm install kafkajs`
-
 ## Action: `produce`
 
 Produce message(s) to a Kafka topic.
@@ -78,6 +76,9 @@ Message fields:
 - `partition` (optional): Target partition number
 - `headers` (optional): Message headers as key-value pairs
 
+A payload may also be given directly as `value:` on the step, without the
+`message:` wrapper. Topics are created on first produce if the broker allows it.
+
 ## Action: `consume`
 
 Consume N messages from a topic. Resolves when `count` messages are received or `timeout` is reached (returns whatever was collected).
@@ -109,7 +110,18 @@ Wait for a single message matching a filter. Fails with `TimeoutError` if no mat
       equals: "user.created"
 ```
 
-Filter uses dot-notation for nested matching. All filter fields must match exactly.
+Filter keys address the decoded message payload using dot-notation, so `type`
+and `data.userId` refer to fields of the value that was produced. Envelope
+fields — `key`, `topic`, `partition`, `offset`, `headers` — are matchable by the
+same names. All filter fields must match exactly. `match:` is accepted as a
+synonym for `filter:`.
+
+The matched message's payload fields are returned at the top level, so
+`path: "data.message"` and `capture: {id: "data.id"}` address the payload. The
+envelope fields (`key`, `value`, `headers`, `topic`, `partition`, `offset`) are
+returned alongside them, so `path: "$.value.type"` also works; a payload field
+of the same name takes precedence, and the untouched envelope is always
+available under `message`.
 
 ## Action: `clear`
 

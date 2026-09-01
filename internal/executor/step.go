@@ -75,6 +75,7 @@ func ExecuteStep(
 	interpCtx *tryve.InterpolationContext,
 ) (*tryve.StepOutcome, error) {
 	start := time.Now()
+	compat := interpCtx.Compat
 
 	// 1. Pre-delay: honour step.Delay (milliseconds), respect context cancellation.
 	if step.Delay > 0 {
@@ -107,20 +108,69 @@ func ExecuteStep(
 		return o
 	}
 
-	// 4. Execute adapter action.
-	result, execErr := adp.Execute(ctx, step.Action, resolvedParams)
+	// Adapters are shared across the suite, so the step's mode travels with the
+	//    context — that is how a file pinned to an older level gets old adapter
+	//    behaviour without a separate registry.
+	ctx = tryve.ContextWithCompat(ctx, compat)
+
+	// 4. Execute adapter action, bounded by the step's own timeout when it sets
+	//    one. A step timeout was parsed but ignored before the execution area
+	//    changed, so it only takes effect once that area is opted in.
+	stepTimeout := 0
+	if compat.Modern(tryve.CompatExecution) {
+		stepTimeout = step.Timeout
+	}
+
+	execCtx := ctx
+	if stepTimeout > 0 {
+		// Adapters that self-limit (kafka, eventhub) read the same timeout as an
+		// operation deadline. The grace period lets them return their own result
+		// first, so a clean "no messages received" is not reported as a
+		// cancellation by a deadline that fired on the same millisecond.
+		deadline := time.Duration(stepTimeout) * time.Millisecond
+		deadline += maxDuration(deadline/10, time.Second)
+
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, deadline)
+		defer cancel()
+	}
+
+	result, execErr := adp.Execute(execCtx, step.Action, resolvedParams)
 	elapsed := time.Since(start)
+
+	// Distinguish the step's own timeout from a cancelled run, so the failure
+	// names the deadline the author set rather than surfacing a bare
+	// "context deadline exceeded".
+	if stepTimeout > 0 && execCtx.Err() != nil && ctx.Err() == nil {
+		timeoutErr := tryve.ExecutionError(step.ID,
+			fmt.Sprintf("step exceeded its timeout of %dms", stepTimeout), execCtx.Err())
+		if step.ContinueOnError {
+			return warnedOutcome(step, result, nil, timeoutErr, elapsed), nil
+		}
+		o := failedOutcome(step, timeoutErr, elapsed)
+		o.Result = result
+		return storeResolved(o), nil
+	}
 
 	// 5. Capture: extract JSONPath values even if execution returned an error,
 	//    as long as there is result data (e.g. shell stdout before non-zero exit).
 	if step.Capture != nil && result != nil && result.Data != nil {
-		// For HTTP adapter, capture paths evaluate against the response body
-		// (matching TS e2e-runner behavior where $.id means response.body.id).
-		captureData := result.Data
+		// For the HTTP adapter, capture paths evaluate against the response body,
+		// so "$.id" means response.body.id. An array body is as valid a root as
+		// an object one — restricting this to objects made "$[0].id" silently
+		// capture nothing from a listing endpoint.
+		var captureData any = result.Data
 		if step.Adapter == "http" {
-			if body, ok := result.Data["body"]; ok {
-				if bodyMap, ok := body.(map[string]any); ok {
-					captureData = bodyMap
+			if body, ok := result.Data["body"]; ok && body != nil {
+				switch body.(type) {
+				case map[string]any:
+					captureData = body
+				case []any:
+					// Capturing from an array body arrived with the assertions
+					// area; before that "$" addressed the whole result.
+					if compat.Modern(tryve.CompatAssertions) {
+						captureData = body
+					}
 				}
 			}
 		}
@@ -146,7 +196,7 @@ func ExecuteStep(
 	var assertionOutcomes []tryve.AssertionOutcome
 	if step.Assert != nil && result != nil && result.Data != nil {
 		resolvedAssert, _ := resolveAssertDef(step.Assert, interpCtx)
-		outcomes, err := assertion.RunAssertions(result.Data, resolvedAssert)
+		outcomes, err := assertion.RunAssertions(result.Data, resolvedAssert, compat)
 		if err != nil {
 			elapsed = time.Since(start)
 			if step.ContinueOnError {
@@ -298,4 +348,12 @@ func hasExitCodeAssertion(assertDef any) bool {
 		}
 	}
 	return false
+}
+
+// maxDuration returns the larger of two durations.
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }

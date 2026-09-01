@@ -31,10 +31,10 @@ type junitTestSuite struct {
 
 // junitTestCase represents a single <testcase> element.
 type junitTestCase struct {
-	Name    string         `xml:"name,attr"`
-	Time    string         `xml:"time,attr,omitempty"`
-	Failure *junitFailure  `xml:"failure,omitempty"`
-	Skipped *junitSkipped  `xml:"skipped,omitempty"`
+	Name    string        `xml:"name,attr"`
+	Time    string        `xml:"time,attr,omitempty"`
+	Failure *junitFailure `xml:"failure,omitempty"`
+	Skipped *junitSkipped `xml:"skipped,omitempty"`
 }
 
 // junitFailure holds the <failure> element content and attributes.

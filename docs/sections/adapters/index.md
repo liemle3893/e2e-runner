@@ -43,28 +43,15 @@ environments:
         clientId: "e2e-runner"
 ```
 
-## Peer Dependencies
+## Dependencies
 
-The HTTP and Shell adapters use built-in Node.js APIs and require no additional dependencies.
+None. Every adapter is compiled into the `tryve` binary — there is nothing to
+install per adapter, and no runtime beyond the binary itself.
 
-Database and messaging adapters are optional peer dependencies. Install only what you need:
-
-```bash
-# PostgreSQL
-npm install pg
-
-# MongoDB
-npm install mongodb
-
-# Redis
-npm install ioredis
-
-# Azure EventHub
-npm install @azure/event-hubs
-
-# Apache Kafka
-npm install kafkajs
-```
+An adapter only needs the service it talks to be reachable and a corresponding
+block under `environments.<env>.adapters` in `e2e.config.yaml`. Run
+`tryve health` to check connectivity for everything the active environment
+configures.
 
 ## Common Step Fields
 

@@ -58,8 +58,20 @@ tags: [smoke, user, crud, e2e]
 
 Run by tag:
 ```bash
-npx e2e run --tag smoke --tag user
+tryve run --tag smoke --tag user
 ```
+
+### API Version
+
+Declare this file's behaviour level, overriding the suite's `apiVersion`:
+
+```yaml
+apiVersion: tryve/v1
+```
+
+Use it to keep one file on the previous behaviour while the rest of the suite
+moves on. A `compatibility` map may refine it per area. `tryve migrate` writes
+and clears these declarations; see `tryve doc cli` and `tryve doc config`.
 
 ### Skip
 
@@ -261,6 +273,9 @@ Each step has common fields plus adapter-specific parameters:
   continueOnError: false         # Optional: continue on failure
   retry: 3                       # Optional: step retry count
   delay: 1000                    # Optional: delay before execution (ms)
+  timeout: 10000                 # Optional: fail this step after this many ms
+  skip: false                    # Optional: skip this step
+  skipReason: ""                 # Optional: why it is skipped
 
   # Adapter-specific parameters (HTTP example)
   method: POST
@@ -298,6 +313,46 @@ execute:
     action: request
     url: "{{baseUrl}}/flaky-endpoint"
     retry: 5                     # Retry this step up to 5 times
+```
+
+### Step Timeout
+
+Bound a single step. When it expires the step fails with an error naming the
+timeout, and for shell steps the command's whole process group is killed:
+
+```yaml
+execute:
+  - adapter: shell
+    action: exec
+    command: "node scripts/e2e/setup.js"
+    timeout: 60000               # Fail after 60 seconds
+```
+
+Without a step timeout, the test-level `timeout` applies.
+
+### API Version
+
+Declare this file's behaviour level, overriding the suite's `apiVersion`:
+
+```yaml
+apiVersion: tryve/v1
+```
+
+Use it to keep one file on the previous behaviour while the rest of the suite
+moves on. A `compatibility` map may refine it per area. `tryve migrate` writes
+and clears these declarations; see `tryve doc cli` and `tryve doc config`.
+
+### Skipping a Step
+
+Use `skip` and `skipReason` together, as at the test level:
+
+```yaml
+setup:
+  - adapter: shell
+    action: exec
+    command: "./scripts/seed-legacy.sh"
+    skip: true
+    skipReason: "Legacy seeder removed in WINX-400; setup now runs in the fixture script"
 ```
 
 ### Delay
@@ -389,6 +444,42 @@ execute:
   - adapter: http
     url: "{{baseUrl}}/items/{{captured.id}}"
 ```
+
+**Types are preserved.** When an expression is the entire value, the resolved
+value keeps its type — a number stays a number, an object stays an object, null
+stays null:
+
+```yaml
+assert:
+  - path: "$.total"
+    equals: "{{captured.expected_total}}"    # compares number to number
+```
+
+Mixing an expression with literal text produces a string, as expected.
+
+**Paths reach into captured data**, including array indices and JSON held as a
+string. A step that captures a script's stdout — JSON as far as the shell is
+concerned — can be addressed directly:
+
+```yaml
+setup:
+  - adapter: shell
+    action: exec
+    command: "node scripts/e2e/setup-promotion.js --code E2E_001"
+    capture:
+      setup_result: "$.stdout"      # '{"promotionId":"p-123","games":[…]}'
+
+execute:
+  - adapter: postgresql
+    action: execute
+    sql: "UPDATE promotion_limits SET mode = 'SOFT' WHERE promotion_id = $1"
+    params: ["{{captured.setup_result.promotionId}}"]
+```
+
+Supported path forms: `a.b`, `a.b[0].c`, `a.b.0.c`.
+
+**Captured data is never re-interpolated.** A response containing `{{` is
+inserted literally, not treated as a template.
 
 ### Global Config Variables
 

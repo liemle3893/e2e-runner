@@ -40,7 +40,7 @@ func TestRunTest_SimplePass(t *testing.T) {
 		Execute: []tryve.StepDefinition{step},
 	}
 
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -68,7 +68,7 @@ func TestRunTest_SkippedTest(t *testing.T) {
 		Execute: []tryve.StepDefinition{newShellExecStep("step-1", "echo should-not-run")},
 	}
 
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -95,7 +95,7 @@ func TestRunTest_AllPhases(t *testing.T) {
 		Teardown: []tryve.StepDefinition{newShellExecStep("teardown-1", "echo teardown")},
 	}
 
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -137,7 +137,7 @@ func TestRunTest_WithTimeout(t *testing.T) {
 		},
 	}
 
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -213,7 +213,7 @@ func TestRunTest_TeardownAlwaysRuns(t *testing.T) {
 		Teardown: []tryve.StepDefinition{newShellExecStep("teardown-1", "echo teardown")},
 	}
 
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -245,7 +245,7 @@ func TestRunTest_Duration(t *testing.T) {
 	}
 
 	start := time.Now()
-	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil)
+	result := executor.RunTest(context.Background(), td, reg, rep, 0, 0, "", nil, false, tryve.ModernCompat())
 	elapsed := time.Since(start)
 
 	if result.Duration <= 0 {

@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -18,17 +19,25 @@ type MongoDBAdapter struct {
 	dbName   string
 	client   *mongo.Client
 	database *mongo.Database
+	compat   tryve.CompatMode
 }
 
 // NewMongoDBAdapter constructs a MongoDBAdapter from a config map.
 // Required keys: "connectionString" (string), "database" (string).
 // Missing or non-string values default to empty string.
 func NewMongoDBAdapter(cfg map[string]any) *MongoDBAdapter {
+	return NewMongoDBAdapterWithCompat(cfg, tryve.LegacyCompat())
+}
+
+// NewMongoDBAdapterWithCompat is NewMongoDBAdapter with an explicit
+// compatibility mode selecting the findOne result shape.
+func NewMongoDBAdapterWithCompat(cfg map[string]any, mode tryve.CompatMode) *MongoDBAdapter {
 	connStr, _ := cfg["connectionString"].(string)
 	dbName, _ := cfg["database"].(string)
 	return &MongoDBAdapter{
 		connStr: connStr,
 		dbName:  dbName,
+		compat:  mode,
 	}
 }
 
@@ -169,8 +178,16 @@ func (a *MongoDBAdapter) insertMany(ctx context.Context, coll *mongo.Collection,
 }
 
 // findOne retrieves a single document matching the filter.
-// Params: "filter" (map[string]any, defaults to empty filter).
-// Returns: {"document": map[string]any}.
+//
+// Params:
+//   - "filter"     (map[string]any, defaults to an empty filter)
+//   - "allowEmpty" (bool) — treat "no match" as a value to assert on rather than
+//     a step error.
+//
+// The document's fields are returned at the top level, so `path: "email"` and
+// `capture: {id: "_id"}` address them directly — the same shape the postgresql
+// adapter's queryOne returns. A "document" key carrying the whole document is
+// also present for callers that prefer to address it explicitly.
 func (a *MongoDBAdapter) findOne(ctx context.Context, coll *mongo.Collection, params map[string]any) (*tryve.StepResult, error) {
 	filter := filterParam(params)
 
@@ -178,12 +195,35 @@ func (a *MongoDBAdapter) findOne(ctx context.Context, coll *mongo.Collection, pa
 	duration, err := MeasureDuration(func() error {
 		return coll.FindOne(ctx, filter).Decode(&doc)
 	})
+
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		if boolParam(params, "allowEmpty") {
+			return SuccessResult(map[string]any{"found": false}, duration, nil), nil
+		}
+		return nil, tryve.AdapterError("mongodb", "findOne",
+			"no document matched the filter; set allowEmpty: true to treat that as a value to assert on", err)
+	}
 	if err != nil {
 		return nil, tryve.AdapterError("mongodb", "findOne", "operation failed", err)
 	}
 
-	data := map[string]any{
-		"document": doc,
+	// Before the adapters area changed, findOne returned only {"document": …};
+	// the fields were not addressable at the top level.
+	if !tryve.CompatOrDefault(ctx, a.compat).Modern(tryve.CompatAdapters) {
+		return SuccessResult(map[string]any{"document": doc}, duration, nil), nil
+	}
+
+	data := make(map[string]any, len(doc)+2)
+	for k, v := range doc {
+		data[k] = v
+	}
+	// Only fill in the helper keys when the document does not already use those
+	// field names, so a real field is never shadowed.
+	if _, taken := data["document"]; !taken {
+		data["document"] = doc
+	}
+	if _, taken := data["found"]; !taken {
+		data["found"] = true
 	}
 	return SuccessResult(data, duration, nil), nil
 }

@@ -10,21 +10,18 @@ execute:
     action: request
     method: GET
     url: "{{baseUrl}}/documents"
-    capture:
-      first_doc_id: "$.data[0].id"
     assert:
       status: 200
       json:
-        # Test array indexing
-        - path: "$.data[0]"
-          exists: true
-        - path: "$.data[0].id"
-          exists: true
-          type: "string"
-        # Test notEmpty on array
-        - path: "$.data"
+        # The listing is a bare JSON array, so "$" is the array itself.
+        - path: "$"
           type: "array"
           notEmpty: true
+        - path: "$[0]"
+          exists: true
+        - path: "$[0].id"
+          exists: true
+          type: "string"
 
   # Test creating a document and checking errors array on duplicate
   - adapter: http

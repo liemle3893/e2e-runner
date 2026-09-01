@@ -18,10 +18,10 @@ func TestConsoleReporter_SuiteComplete(t *testing.T) {
 	c := reporter.NewConsole(&buf, false, false)
 
 	result := &tryve.SuiteResult{
-		Passed:  2,
-		Failed:  1,
-		Skipped: 0,
-		Total:   3,
+		Passed:   2,
+		Failed:   1,
+		Skipped:  0,
+		Total:    3,
 		Duration: 500 * time.Millisecond,
 	}
 

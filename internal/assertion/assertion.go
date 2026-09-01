@@ -2,6 +2,7 @@ package assertion
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/liemle3893/go-tryve/internal/tryve"
@@ -18,9 +19,19 @@ var knownHTTPKeys = map[string]bool{
 	"duration":    true,
 }
 
-// operatorNames is the set of all recognised operator names.
-// Used to detect direct operator keys at the top level of a map assertion.
-var operatorNames = map[string]bool{
+// structuralKeys are slice-item keys that select what to assert against rather
+// than naming an operator.
+var structuralKeys = map[string]bool{
+	"path":   true,
+	"row":    true,
+	"column": true,
+}
+
+// legacyOperators is the operator set recognised before the assertions area
+// changed. Names outside it — the aliases and the operators added since — were
+// silently ignored, so a suite on v1 compatibility must keep ignoring them
+// rather than start failing on an operator it never evaluated.
+var legacyOperators = map[string]bool{
 	"equals":             true,
 	"notEquals":          true,
 	"contains":           true,
@@ -42,6 +53,12 @@ var operatorNames = map[string]bool{
 	"notHasProperty":     true,
 }
 
+// isOperator reports whether key names an assertion operator or one of its aliases.
+func isOperator(key string) bool {
+	_, ok := CanonicalOperator(key)
+	return ok
+}
+
 // RunAssertions evaluates assertDef against data and returns one AssertionOutcome per check.
 //
 // assertDef may be:
@@ -49,23 +66,24 @@ var operatorNames = map[string]bool{
 //   - map[string]any — HTTP-style with keys: status, statusRange, headers, json, body, duration,
 //     or a direct {path, operator: value} block
 //   - []any — generic slice of {path, operator: value} items
-func RunAssertions(data map[string]any, assertDef any) ([]tryve.AssertionOutcome, error) {
+func RunAssertions(data map[string]any, assertDef any, mode tryve.CompatMode) ([]tryve.AssertionOutcome, error) {
 	if assertDef == nil {
 		return nil, nil
 	}
 
 	switch def := assertDef.(type) {
 	case map[string]any:
-		return runMapAssertions(data, def)
+		return runMapAssertions(data, def, mode)
 	case []any:
-		return runSliceAssertions(data, def)
+		return runSliceAssertions(data, def, mode)
 	default:
 		return nil, fmt.Errorf("unsupported assertDef type %T", assertDef)
 	}
 }
 
 // runMapAssertions handles the HTTP-style map format.
-func runMapAssertions(data map[string]any, def map[string]any) ([]tryve.AssertionOutcome, error) {
+func runMapAssertions(data map[string]any, def map[string]any, mode tryve.CompatMode) ([]tryve.AssertionOutcome, error) {
+	modern := mode.Modern(tryve.CompatAssertions)
 	var outcomes []tryve.AssertionOutcome
 
 	// status — single number or []any oneOf check.
@@ -118,15 +136,13 @@ func runMapAssertions(data map[string]any, def map[string]any) ([]tryve.Assertio
 	if jsonDef, ok := def["json"]; ok {
 		if items, ok := jsonDef.([]any); ok {
 			// JSON path assertions evaluate against the response body, not the
-			// full adapter data. This matches the TS e2e-runner behavior where
-			// paths like "$.data.id" resolve against the parsed response body.
-			jsonData := data
-			if body, ok := data["body"]; ok {
-				if bodyMap, ok := body.(map[string]any); ok {
-					jsonData = bodyMap
-				}
-			}
-			outs, err := runSliceAssertions(jsonData, items)
+			// full adapter data, so "$.data.id" means the body's data.id.
+			//
+			// The body may be an array as legitimately as an object; treating
+			// only objects as the root made "$" and "$[0]" silently address the
+			// enclosing result instead, so those assertions checked the wrong
+			// value rather than failing.
+			outs, err := runSliceAssertions(jsonRoot(data, modern), items, mode)
 			if err != nil {
 				return outcomes, err
 			}
@@ -174,80 +190,253 @@ func runMapAssertions(data map[string]any, def map[string]any) ([]tryve.Assertio
 	if path, hasPath := def["path"]; hasPath {
 		pathStr, _ := path.(string)
 		actual, _ := EvalJSONPath(data, pathStr)
-		for key, val := range def {
-			if key == "path" {
-				continue
-			}
-			if !operatorNames[key] {
-				continue
-			}
-			r := Match(key, actual, val)
+		outcomes = append(outcomes, applyOperators(pathStr, actual, def, structuralKeys, modern)...)
+		return outcomes, nil
+	}
+
+	// Remaining top-level keys are either operators applied to the whole result
+	// (rare) or the name of a field in the adapter's result data.
+	//
+	// The field form is what makes `exitCode: 0`, `stdout: {contains: …}` and
+	// `rowCount: {gte: 1}` work. Before it existed those keys matched nothing and
+	// were dropped without a word, so the assertion never ran and the step passed.
+	for _, key := range sortedKeys(def) {
+		if knownHTTPKeys[key] {
+			continue
+		}
+		val := def[key]
+
+		if isOperator(key) && (modern || legacyOperators[key]) {
+			r := Match(key, data, val)
 			outcomes = append(outcomes, tryve.AssertionOutcome{
-				Path:     pathStr,
+				Path:     "$",
 				Operator: key,
 				Expected: val,
-				Actual:   actual,
+				Actual:   data,
 				Passed:   r.Pass,
 				Message:  r.Message,
 			})
+			continue
 		}
-	} else {
-		// Check for top-level operator keys that are not known HTTP keys and not "path".
-		// This handles adapters that place operator checks directly at the map root
-		// alongside non-HTTP-specific keys (rare, but supported for completeness).
-		for key, val := range def {
-			if knownHTTPKeys[key] {
-				continue
-			}
-			if operatorNames[key] {
-				r := Match(key, data, val)
-				outcomes = append(outcomes, tryve.AssertionOutcome{
-					Path:     "$",
-					Operator: key,
-					Expected: val,
-					Actual:   data,
-					Passed:   r.Pass,
-					Message:  r.Message,
-				})
-			}
+
+		// Field assertions did not exist before the assertions area changed: an
+		// unrecognised key was dropped, and the step passed without the check.
+		if !modern {
+			continue
 		}
+
+		// Field assertion: look the key up in the result data.
+		actual, _ := EvalJSONPath(data, key)
+		if opMap, ok := val.(map[string]any); ok && looksLikeOperatorMap(opMap) {
+			outcomes = append(outcomes, applyOperators(key, actual, opMap, nil, modern)...)
+			continue
+		}
+		r := Match("equals", actual, val)
+		outcomes = append(outcomes, tryve.AssertionOutcome{
+			Path:     key,
+			Operator: "equals",
+			Expected: val,
+			Actual:   actual,
+			Passed:   r.Pass,
+			Message:  r.Message,
+		})
 	}
 
 	return outcomes, nil
 }
 
-// runSliceAssertions handles the generic []any format where each item is a
-// map[string]any with a "path" key and one or more operator keys.
-func runSliceAssertions(data map[string]any, items []any) ([]tryve.AssertionOutcome, error) {
+// looksLikeOperatorMap reports whether every key in m names an operator, which
+// distinguishes `stdout: {contains: "x"}` from an equality check against a
+// literal object value.
+func looksLikeOperatorMap(m map[string]any) bool {
+	if len(m) == 0 {
+		return false
+	}
+	for k := range m {
+		if !isOperator(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// applyOperators evaluates every operator key in def against actual, producing
+// one outcome per operator. Keys listed in skip are ignored; any remaining key
+// that is not a recognised operator yields a FAILING outcome rather than being
+// dropped, so a typo surfaces as a red test instead of a silent pass.
+func applyOperators(path string, actual any, def map[string]any, skip map[string]bool, modern bool) []tryve.AssertionOutcome {
+	var outcomes []tryve.AssertionOutcome
+	for _, key := range sortedKeys(def) {
+		if skip[key] {
+			continue
+		}
+		val := def[key]
+
+		// Legacy behaviour recognised a fixed operator set and silently ignored
+		// everything else, including the aliases and the operators added since.
+		if !modern {
+			if legacyOperators[key] {
+				r := Match(key, actual, val)
+				outcomes = append(outcomes, tryve.AssertionOutcome{
+					Path: path, Operator: key, Expected: val, Actual: actual,
+					Passed: r.Pass, Message: r.Message,
+				})
+			}
+			continue
+		}
+
+		if !isOperator(key) {
+			outcomes = append(outcomes, tryve.AssertionOutcome{
+				Path:     path,
+				Operator: key,
+				Expected: val,
+				Actual:   actual,
+				Passed:   false,
+				Message: fmt.Sprintf("unknown assertion operator %q; valid operators are: %s",
+					key, strings.Join(KnownOperators(), ", ")),
+			})
+			continue
+		}
+		r := Match(key, actual, val)
+		outcomes = append(outcomes, tryve.AssertionOutcome{
+			Path:     path,
+			Operator: key,
+			Expected: val,
+			Actual:   actual,
+			Passed:   r.Pass,
+			Message:  r.Message,
+		})
+	}
+	return outcomes
+}
+
+// sortedKeys returns the keys of m in a stable order so assertion outcomes are
+// reported deterministically across runs.
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// jsonRoot returns the value that "$" refers to for an HTTP-style assertion:
+// the parsed response body when there is one, and otherwise the whole result.
+func jsonRoot(data map[string]any, modern bool) any {
+	body, ok := data["body"]
+	if !ok || body == nil {
+		return data
+	}
+	if m, isMap := body.(map[string]any); isMap {
+		return m
+	}
+	// An array body only became the root when the assertions area changed;
+	// before that "$" addressed the whole result for anything but an object.
+	if _, isSlice := body.([]any); isSlice && modern {
+		return body
+	}
+	// A scalar or unparsed string body is addressed as "body", not as the root.
+	return data
+}
+
+// runSliceAssertions handles the generic []any format. Each item selects a value
+// to assert against — either with "path" (a JSONPath expression) or with
+// "row"/"column" (a cell in a SQL result set) — plus one or more operator keys.
+func runSliceAssertions(data any, items []any, mode tryve.CompatMode) ([]tryve.AssertionOutcome, error) {
+	modern := mode.Modern(tryve.CompatAssertions)
+
 	var outcomes []tryve.AssertionOutcome
 	for _, item := range items {
 		m, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
-		pathVal, _ := m["path"]
-		pathStr, _ := pathVal.(string)
-		actual, _ := EvalJSONPath(data, pathStr)
 
-		for key, val := range m {
-			if key == "path" {
-				continue
-			}
-			if !operatorNames[key] {
-				continue
-			}
-			r := Match(key, actual, val)
-			outcomes = append(outcomes, tryve.AssertionOutcome{
-				Path:     pathStr,
-				Operator: key,
-				Expected: val,
-				Actual:   actual,
-				Passed:   r.Pass,
-				Message:  r.Message,
-			})
+		// Before the assertions area changed, a slice item without "path" matched
+		// no handler and every operator on it was dropped.
+		if _, hasPath := m["path"]; !hasPath && !modern {
+			continue
 		}
+
+		// row/column form: address a cell in a query result.
+		if _, hasColumn := m["column"]; hasColumn && modern {
+			path, actual, err := resolveCell(data, m)
+			if err != nil {
+				outcomes = append(outcomes, tryve.AssertionOutcome{
+					Path:     path,
+					Operator: "row/column",
+					Actual:   nil,
+					Passed:   false,
+					Message:  err.Error(),
+				})
+				continue
+			}
+			outcomes = append(outcomes, applyOperators(path, actual, m, structuralKeys, modern)...)
+			continue
+		}
+
+		pathStr, _ := m["path"].(string)
+		actual, _ := EvalJSONPath(data, pathStr)
+		outcomes = append(outcomes, applyOperators(pathStr, actual, m, structuralKeys, modern)...)
 	}
 	return outcomes, nil
+}
+
+// resolveCell locates the value addressed by an item's "row" (default 0) and
+// "column" keys within a SQL adapter result.
+//
+// It handles both result shapes the postgresql adapter produces: the "query"
+// shape, where rows live under data["rows"], and the "queryOne" shape, where the
+// single row's columns sit at the top level of data.
+func resolveCell(root any, m map[string]any) (string, any, error) {
+	data, ok := root.(map[string]any)
+	if !ok {
+		return "column", nil, fmt.Errorf(
+			"row/column assertions need an object result, got %T", root)
+	}
+	column, ok := m["column"].(string)
+	if !ok {
+		return "column", nil, fmt.Errorf("assertion \"column\" must be a string, got %T", m["column"])
+	}
+
+	rowIdx := 0
+	if rv, present := m["row"]; present {
+		rowIdx = int(toFloat64(rv))
+	}
+	path := fmt.Sprintf("rows[%d].%s", rowIdx, column)
+
+	rowsVal, hasRows := data["rows"]
+	if !hasRows {
+		// queryOne shape: the row's columns are the top-level data map.
+		if rowIdx != 0 {
+			return path, nil, fmt.Errorf("row %d requested but the result holds a single row", rowIdx)
+		}
+		val, found := data[column]
+		if !found {
+			return path, nil, fmt.Errorf("column %q not present in result; available columns: %s",
+				column, strings.Join(sortedKeys(data), ", "))
+		}
+		return path, val, nil
+	}
+
+	rows, ok := rowsVal.([]any)
+	if !ok {
+		return path, nil, fmt.Errorf("result \"rows\" is %T, not an array", rowsVal)
+	}
+	if rowIdx < 0 || rowIdx >= len(rows) {
+		return path, nil, fmt.Errorf("row %d is out of range; the result has %d row(s)", rowIdx, len(rows))
+	}
+	row, ok := rows[rowIdx].(map[string]any)
+	if !ok {
+		return path, nil, fmt.Errorf("row %d is %T, not an object", rowIdx, rows[rowIdx])
+	}
+	val, found := row[column]
+	if !found {
+		return path, nil, fmt.Errorf("column %q not present in row %d; available columns: %s",
+			column, rowIdx, strings.Join(sortedKeys(row), ", "))
+	}
+	return path, val, nil
 }
 
 // assertOneOf checks that actual equals one value in the allowed slice.

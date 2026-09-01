@@ -10,15 +10,44 @@ environments:
     baseUrl: "http://localhost:3000"
     adapters:
       shell:
-        defaultTimeout: 30000       # Default command timeout in ms (default: 30000)
-        defaultCwd: "/app"           # Default working directory
-        defaultEnv:                  # Default environment variables
-          NODE_ENV: "test"
+        defaultTimeout: 60000        # Timeout in ms for steps that set none (default: 60000)
+        cwd: "."                     # Working directory, relative to the config file
+        allow:                       # Optional: only these commands may run
+          - "^node scripts/e2e/"
+          - "^yarn (build|db:migrate)$"
+        deny:                        # Optional: refused before allow is consulted
+          - "rm -rf /"
+        env:                         # Optional: the only variables commands inherit
+          - PATH
+          - HOME
+          - POSTGRESQL_CONNECTION_STRING
 ```
 
-The Shell adapter uses the built-in Node.js `child_process` module and has **no peer dependencies**.
+The Shell adapter runs commands through `sh -c` (`cmd /C` on Windows) with **no
+peer dependencies**.
 
-Commands originate from static YAML test files written by the test author (the same trust model as CI/CD systems). No untrusted user input is passed to the shell.
+## Command Policy
+
+A shell step runs a command on whatever machine the suite runs on, with whatever
+that machine's environment holds. The policy keys narrow that:
+
+- **`allow`** — a list of regular expressions. When present the adapter is
+  deny-by-default: a command matching none of them is refused before it runs,
+  with an error naming the policy. When absent, any command runs.
+- **`deny`** — regular expressions refused outright. Evaluated before `allow`.
+- **`env`** — the environment variables a command inherits. When present, nothing
+  else is passed through, so a step cannot read a credential it was not given.
+  When absent, the full process environment is inherited. A step's own `env:`
+  block is always applied on top.
+- **`cwd`** — the working directory, resolved relative to the config file.
+
+Start by adding an `allow` list covering the scripts your suite genuinely needs;
+anything else then fails loudly rather than executing.
+
+**Every command is bounded by a timeout** — the step's `timeout`, else
+`defaultTimeout`, else 60 seconds. On expiry the whole process group is killed,
+so a server or container the command started in the background does not outlive
+its step.
 
 ## Action: `exec`
 
@@ -179,7 +208,25 @@ execute:
 
 ## Timeout Behavior
 
-When a command exceeds its timeout:
-- The process is killed (SIGTERM)
-- An `AdapterError` is thrown with a "timed out" message
-- The step fails immediately
+Every command has a timeout: the step's `timeout`, else the adapter's
+`defaultTimeout`, else 60 seconds. When it expires:
+
+- The command's entire process group is killed, not just the shell — anything the
+  command backgrounded (a server, a `docker run`) dies with it
+- The step fails with an error naming the timeout that was exceeded
+
+## Preferring built-ins over shell steps
+
+Several common shell steps have a built-in equivalent that runs in-process,
+needs no policy exception, and fails with a clearer message:
+
+| Shell command | Use instead |
+|---|---|
+| `node -e "process.stdout.write(String(Date.now()))"` | `{{$now(unixMs)}}` |
+| `node -e "…JSON.parse(argv[1]).someId"` on a captured value | `{{captured.result.someId}}` |
+| `cat file.json \| jq -r .some.key` | `{{$jsonFile(file.json, some.key)}}` |
+| `echo "$JSON" \| jq .field` | `{{$jsonPath(captured.json, field)}}` |
+| a script that mints a test JWT | `{{$jwt(HS256, secret, {"sub":"…"}, 1h)}}` |
+| `sleep 2` between steps | `delay: 2000` on the following step |
+
+See `tryve doc built-in-functions`.

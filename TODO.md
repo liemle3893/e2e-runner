@@ -1,887 +1,334 @@
-# E2E Test Runner - Implementation TODO
+# Tryve — Implementation TODO
 
-This document outlines features to be implemented, organized by priority.
+Features not yet built, and known debt. Everything here is checked against the
+current Go codebase; items completed by the TypeScript-to-Go port or since have
+been removed rather than left as noise.
 
 ## Priority Levels
 
-- **P0**: Critical - Core functionality gaps
-- **P1**: High - Important features for production use
-- **P2**: Medium - Nice-to-have improvements
-- **P3**: Low - Future enhancements
+- **P0**: Critical — correctness gaps, or things that make a green suite untrustworthy
+- **P1**: High — important for production use
+- **P2**: Medium — nice to have
+- **P3**: Low — future
 
 ---
 
-## P0 - Critical
+## P0 — Critical
 
-### 1. Lifecycle Hooks
+### 1. Consolidate the adapter registry
+
+**Status**: Not done
+**Files**: `internal/cli/run.go`, `internal/cli/health.go`, `pkg/runner/runner.go`
+
+The `switch` that maps a config adapter name to its constructor is copy-pasted in
+three places. Registering a new adapter in only one produces an adapter that works
+under `tryve run` but reports "not registered" under `tryve health`, or that works
+via the CLI but not via the `pkg/runner` library API.
+
+Extract a single `adapter.BuildRegistry(cfg *config.LoadedConfig) *Registry` and
+call it from all three. Then shorten the adapter checklist in `CLAUDE.md` and
+`AGENTS.md` to one entry.
+
+**Effort**: ~1 hour.
+
+### 2. Validate unknown step fields
+
+**Status**: Not done
+**Files**: `internal/loader/parser.go`, `internal/loader/validator.go`
+
+`parseStep` sweeps every key it does not recognise into `Params`, where an adapter
+that does not read it ignores it in silence. A misspelled `commmand`, or a field
+supported by one adapter and written on a step using another, produces no
+diagnostic at all — the step just does something other than what was written.
+
+Validation should compare each step's params against the keys its adapter actually
+reads and report the leftovers. This needs adapters to declare their parameter
+names; a `ParamSpec()` method on the `Adapter` interface is the obvious route, and
+it would also let `validate` catch a required param that is present but of the
+wrong type.
+
+**Effort**: 4–6 hours.
+
+---
+
+## P1 — High Priority
+
+### 3. `waitFor` / `retryUntil` on a step
 
 **Status**: Not implemented
-**Files to modify**: `src/core/test-orchestrator.ts`, `src/core/config-loader.ts`, `src/types.ts`
+**Files**: `internal/executor/step.go`, `internal/tryve/types.go`, `internal/loader/parser.go`
 
-**Description**: Support global lifecycle hooks for setup/teardown across all tests.
+Asserting on something a background worker produces currently means guessing a
+`delay:` long enough, or shelling out to a bash polling loop. Both are flaky and
+slow: the delay is either too short some of the time or wasted every time.
 
-**Configuration** (`e2e.config.yaml`):
+A step should be able to retry itself until its own assertions pass:
+
 ```yaml
-hooks:
-  beforeAll: "./hooks/global-setup.ts"   # Run once before all tests
-  afterAll: "./hooks/global-teardown.ts" # Run once after all tests
-  beforeEach: "./hooks/test-setup.ts"    # Run before each test
-  afterEach: "./hooks/test-teardown.ts"  # Run after each test
+- adapter: postgresql
+  action: queryOne
+  sql: "SELECT status FROM jobs WHERE id = $1"
+  params: ["{{captured.job_id}}"]
+  waitFor:
+    timeout: 30000        # give up after 30s
+    interval: 500         # re-run every 500ms
+  assert:
+    - column: status
+      equals: "COMPLETED"
 ```
 
-**Implementation Steps**:
+The retry machinery in `ExecuteStepWithRetry` is close to what is needed but
+retries on *failure* with exponential backoff; this wants a fixed interval, a wall
+-clock deadline, and a final outcome that reports how long it waited.
 
-1. **Add types** (`src/types.ts`):
-   ```typescript
-   interface HooksConfig {
-     beforeAll?: string;
-     afterAll?: string;
-     beforeEach?: string;
-     afterEach?: string;
-   }
+**Effort**: 4–6 hours.
 
-   interface E2EConfig {
-     // ... existing fields
-     hooks?: HooksConfig;
-   }
-   ```
+### 4. Concurrent steps
 
-2. **Create hook loader** (`src/core/hook-loader.ts`):
-   ```typescript
-   import { pathToFileURL } from 'url';
+**Status**: Not implemented
+**Files**: `internal/executor/runner.go`, `internal/tryve/types.go`
 
-   interface Hook {
-     run: (context: HookContext) => Promise<void>;
-   }
+Testing a race — two users claiming the last voucher, a double-submit against an
+idempotency key — currently requires backgrounding `curl` from a shell step and
+reassembling the results by hand from temp files. Tests are parallelised, but the
+steps within a test are strictly sequential.
 
-   interface HookContext {
-     config: E2EConfig;
-     environment: string;
-     adapters: Record<string, Adapter>;
-     variables: Record<string, unknown>;
-   }
+A phase should be able to declare a group of steps that run together and join
+before the next step:
 
-   export async function loadHook(hookPath: string): Promise<Hook> {
-     const absolutePath = path.resolve(hookPath);
-     const module = await import(pathToFileURL(absolutePath).href);
-     return module.default || module;
-   }
-   ```
-
-3. **Modify test-orchestrator.ts**:
-   - Load hooks on initialization
-   - Call `beforeAll` before test execution starts
-   - Call `beforeEach` before each test's setup phase
-   - Call `afterEach` after each test's teardown phase
-   - Call `afterAll` after all tests complete
-
-4. **Example hook file** (`hooks/global-setup.ts`):
-   ```typescript
-   export default {
-     async run(context) {
-       console.log('Global setup running...');
-       // Initialize shared resources
-       await context.adapters.postgresql.execute({
-         sql: 'TRUNCATE test_data CASCADE'
-       });
-     }
-   };
-   ```
-
-**Estimated effort**: 4-6 hours
-
----
-
-### 2. Test Dependencies
-
-**Status**: Partially implemented (field exists but not enforced)
-**Files to modify**: `src/core/test-orchestrator.ts`, `src/core/test-discovery.ts`
-
-**Description**: Allow tests to declare dependencies on other tests.
-
-**YAML Syntax**:
 ```yaml
-name: TC-ORDER-002
-depends:
-  - TC-USER-001    # This test must pass first
-  - TC-PRODUCT-001
-
 execute:
-  # ...
+  - parallel:
+      - id: scan_a
+        adapter: http
+        ...
+      - id: scan_b
+        adapter: http
+        ...
 ```
 
-**Implementation Steps**:
+Captures from a parallel group must be deterministic — each step writes its own
+keys, and the group joins before anything reads them.
 
-1. **Build dependency graph** in `test-discovery.ts`:
-   ```typescript
-   interface TestNode {
-     test: UnifiedTestDefinition;
-     dependencies: string[];
-     dependents: string[];
-   }
+**Effort**: 6–8 hours.
 
-   function buildDependencyGraph(tests: UnifiedTestDefinition[]): Map<string, TestNode> {
-     const graph = new Map<string, TestNode>();
+### 5. Multiple named instances of one adapter type
 
-     // Build nodes
-     for (const test of tests) {
-       graph.set(test.name, {
-         test,
-         dependencies: test.depends || [],
-         dependents: []
-       });
-     }
+**Status**: Not implemented
+**Files**: `internal/config/types.go`, the registry builder from item 1, `internal/loader/validator.go`
 
-     // Build reverse dependencies
-     for (const [name, node] of graph) {
-       for (const dep of node.dependencies) {
-         const depNode = graph.get(dep);
-         if (depNode) {
-           depNode.dependents.push(name);
-         }
-       }
-     }
+`EnvironmentConfig.Adapters` is keyed by adapter type, so a suite can reach exactly
+one PostgreSQL database, one Redis, one Kafka. Testing anything that spans two
+databases — a migration, a read replica, a second tenant's store — is impossible
+without dropping to `psql` in a shell step.
 
-     return graph;
-   }
-   ```
+Allow a qualified name, resolving `postgresql.reporting` to the adapter type before
+the dot:
 
-2. **Topological sort for execution order**:
-   ```typescript
-   function topologicalSort(graph: Map<string, TestNode>): string[] {
-     const visited = new Set<string>();
-     const result: string[] = [];
+```yaml
+adapters:
+  postgresql:
+    connectionString: "${PRIMARY_DSN}"
+  postgresql.reporting:
+    connectionString: "${REPORTING_DSN}"
+```
 
-     function visit(name: string) {
-       if (visited.has(name)) return;
-       visited.add(name);
+```yaml
+- adapter: postgresql.reporting
+  action: query
+  sql: "SELECT ..."
+```
 
-       const node = graph.get(name);
-       if (node) {
-         for (const dep of node.dependencies) {
-           visit(dep);
-         }
-         result.push(name);
-       }
-     }
+**Effort**: 4–5 hours.
 
-     for (const name of graph.keys()) {
-       visit(name);
-     }
+### 6. Step-by-step interactive mode
 
-     return result;
-   }
-   ```
+**Status**: Not implemented; documented in `docs/sections/cli.md` as a flag that
+does not exist
+**Files**: `internal/cli/run.go`, new `internal/executor/interactive.go`
 
-3. **Modify orchestrator** to:
-   - Sort tests by dependency order
-   - Skip dependent tests if dependency fails
-   - Report dependency failures clearly
+Pause after each step, print the result and the captured values, and let the user
+continue, skip, or abort. Either implement `--step-by-step` or remove it from
+`cli.md` — a documented flag that cobra rejects is worse than no flag.
 
-4. **Handle circular dependencies**:
-   ```typescript
-   function detectCycles(graph: Map<string, TestNode>): string[] | null {
-     // Detect and report circular dependencies
-   }
-   ```
+**Effort**: 2–3 hours.
 
-**Estimated effort**: 3-4 hours
+### 7. HTTP traffic capture
+
+**Status**: Not implemented; `--capture-traffic` is likewise documented but absent
+**Files**: `internal/adapter/http.go`, new `internal/executor/traffic.go`
+
+Record the full request and response for every HTTP step to a file, keyed by test
+and step id, for debugging a failure after the fact. HAR output would let the
+result open in browser devtools.
+
+Needs a hook the adapter can write to without knowing about the executor — a
+`RoundTripper` wrapper installed on the client is the cleanest route.
+
+**Effort**: 3–4 hours.
 
 ---
 
-## P1 - High Priority
+## P2 — Medium Priority
 
-### 3. Watch Mode
+### 8. `matchesSchema` operator
 
-**Status**: CLI flag exists but not implemented
-**Files to modify**: `src/cli/run.ts`, new file `src/core/watcher.ts`
+**Status**: Not implemented
+**Files**: `internal/assertion/matchers.go`
 
-**Description**: Re-run tests when files change.
+JSON Schema validation of a response body, for asserting a contract rather than
+individual fields:
 
-**CLI**:
-```bash
-e2e run --watch
-e2e run --watch --grep "user"
-```
-
-**Implementation Steps**:
-
-1. **Add watcher** (`src/core/watcher.ts`):
-   ```typescript
-   import chokidar from 'chokidar';
-
-   interface WatcherOptions {
-     testDir: string;
-     configPath: string;
-     onChange: (changedFiles: string[]) => void;
-   }
-
-   export function createWatcher(options: WatcherOptions) {
-     const watcher = chokidar.watch([
-       `${options.testDir}/**/*.test.yaml`,
-       `${options.testDir}/**/*.test.ts`,
-       options.configPath
-     ], {
-       ignoreInitial: true,
-       awaitWriteFinish: {
-         stabilityThreshold: 300
-       }
-     });
-
-     let changedFiles: string[] = [];
-     let debounceTimer: NodeJS.Timeout;
-
-     watcher.on('change', (path) => {
-       changedFiles.push(path);
-       clearTimeout(debounceTimer);
-       debounceTimer = setTimeout(() => {
-         options.onChange([...changedFiles]);
-         changedFiles = [];
-       }, 500);
-     });
-
-     return watcher;
-   }
-   ```
-
-2. **Integrate with CLI** (`src/cli/run.ts`):
-   - Start watcher if `--watch` flag is set
-   - Re-run affected tests on file change
-   - Clear console between runs
-   - Show "watching for changes..." message
-
-3. **Smart test selection**:
-   - If test file changed, run that test
-   - If config changed, run all tests
-   - If shared fixture changed, run dependent tests
-
-**Dependencies**: `chokidar` package
-
-**Estimated effort**: 3-4 hours
-
----
-
-### 4. Step-by-Step Interactive Mode
-
-**Status**: CLI flag exists but not implemented
-**Files to modify**: `src/cli/run.ts`, new file `src/core/interactive.ts`
-
-**Description**: Pause after each step for debugging.
-
-**CLI**:
-```bash
-e2e run --step-by-step TC-USER-001
-```
-
-**Implementation Steps**:
-
-1. **Create interactive controller** (`src/core/interactive.ts`):
-   ```typescript
-   import readline from 'readline';
-
-   export class InteractiveController {
-     private rl: readline.Interface;
-
-     constructor() {
-       this.rl = readline.createInterface({
-         input: process.stdin,
-         output: process.stdout
-       });
-     }
-
-     async promptContinue(stepInfo: StepInfo): Promise<'continue' | 'skip' | 'abort'> {
-       console.log('\n--- Step completed ---');
-       console.log(`Step: ${stepInfo.description}`);
-       console.log(`Result: ${JSON.stringify(stepInfo.result, null, 2)}`);
-       console.log('\nPress Enter to continue, "s" to skip next, "q" to quit');
-
-       return new Promise((resolve) => {
-         this.rl.question('> ', (answer) => {
-           if (answer === 'q') resolve('abort');
-           else if (answer === 's') resolve('skip');
-           else resolve('continue');
-         });
-       });
-     }
-   }
-   ```
-
-2. **Integrate with step executor**:
-   - Inject interactive controller
-   - Pause after each step execution
-   - Display step result and captured values
-   - Allow user to continue, skip, or abort
-
-**Estimated effort**: 2-3 hours
-
----
-
-### 5. HTTP Traffic Capture
-
-**Status**: CLI flag exists but not implemented
-**Files to modify**: `src/adapters/http.adapter.ts`, new file `src/core/traffic-capture.ts`
-
-**Description**: Record HTTP request/response for debugging.
-
-**CLI**:
-```bash
-e2e run --capture-traffic -o ./traffic/
-```
-
-**Implementation Steps**:
-
-1. **Create traffic capture module** (`src/core/traffic-capture.ts`):
-   ```typescript
-   interface TrafficEntry {
-     timestamp: string;
-     testName: string;
-     stepId: string;
-     request: {
-       method: string;
-       url: string;
-       headers: Record<string, string>;
-       body?: unknown;
-     };
-     response: {
-       status: number;
-       headers: Record<string, string>;
-       body?: unknown;
-       duration: number;
-     };
-   }
-
-   export class TrafficCapture {
-     private entries: TrafficEntry[] = [];
-
-     record(entry: TrafficEntry) {
-       this.entries.push(entry);
-     }
-
-     async save(outputPath: string) {
-       await fs.writeFile(
-         outputPath,
-         JSON.stringify(this.entries, null, 2)
-       );
-     }
-   }
-   ```
-
-2. **Integrate with HTTP adapter**:
-   - Capture full request details before sending
-   - Capture full response after receiving
-   - Calculate request duration
-   - Store with test/step context
-
-3. **Generate HAR format** (optional):
-   - Convert traffic to HAR format for browser dev tools
-
-**Estimated effort**: 3-4 hours
-
----
-
-### 6. TypeScript Test DSL Enhancement
-
-**Status**: Basic TypeScript support exists
-**Files to modify**: `src/core/ts-loader.ts`, new file `src/dsl/test-builder.ts`
-
-**Description**: Fluent API for writing TypeScript tests.
-
-**Target API**:
-```typescript
-import { test, http, postgresql } from '@liemle3893/go-tryve';
-
-export default test('TC-USER-001')
-  .description('User CRUD operations')
-  .priority('P0')
-  .tags('user', 'crud')
-  .setup(async (ctx) => {
-    await ctx.postgresql.execute({
-      sql: 'DELETE FROM users WHERE email LIKE $1',
-      params: ['test-%@example.com']
-    });
-  })
-  .execute(async (ctx) => {
-    const response = await ctx.http.post('/users', {
-      body: { email: 'test@example.com', name: 'Test' }
-    });
-
-    ctx.capture('userId', response.body.id);
-
-    expect(response.status).toBe(201);
-    expect(response.body.name).toEqual('Test');
-  })
-  .verify(async (ctx) => {
-    const user = await ctx.postgresql.queryOne({
-      sql: 'SELECT * FROM users WHERE id = $1',
-      params: [ctx.captured.userId]
-    });
-
-    expect(user.email).toBe('test@example.com');
-  })
-  .teardown(async (ctx) => {
-    await ctx.http.delete(`/users/${ctx.captured.userId}`);
-  });
-```
-
-**Implementation Steps**:
-
-1. **Create test builder** (`src/dsl/test-builder.ts`):
-   ```typescript
-   export function test(name: string): TestBuilder {
-     return new TestBuilder(name);
-   }
-
-   class TestBuilder {
-     private definition: Partial<UnifiedTestDefinition> = {};
-
-     constructor(name: string) {
-       this.definition.name = name;
-     }
-
-     description(desc: string): this { /* ... */ }
-     priority(p: Priority): this { /* ... */ }
-     tags(...tags: string[]): this { /* ... */ }
-     setup(fn: SetupFn): this { /* ... */ }
-     execute(fn: ExecuteFn): this { /* ... */ }
-     verify(fn: VerifyFn): this { /* ... */ }
-     teardown(fn: TeardownFn): this { /* ... */ }
-
-     build(): UnifiedTestDefinition { /* ... */ }
-   }
-   ```
-
-2. **Create adapter context** (`src/dsl/context.ts`):
-   ```typescript
-   interface TestContext {
-     http: HttpClient;
-     postgresql: PostgreSQLClient;
-     redis: RedisClient;
-     mongodb: MongoDBClient;
-     eventhub: EventHubClient;
-     captured: Record<string, unknown>;
-     capture(key: string, value: unknown): void;
-   }
-   ```
-
-3. **Export from package**:
-   ```typescript
-   // src/index.ts
-   export { test } from './dsl/test-builder';
-   export { expect, assert } from './assertions';
-   ```
-
-**Estimated effort**: 6-8 hours
-
----
-
-## P2 - Medium Priority
-
-### 7. Additional Assertion Operators
-
-**Status**: Partially implemented
-**Files to modify**: `src/assertions/matchers.ts`
-
-**Missing operators**:
-
-| Operator | Description | Implementation |
-|----------|-------------|----------------|
-| `startsWith` | String starts with | `value.startsWith(expected)` |
-| `endsWith` | String ends with | `value.endsWith(expected)` |
-| `isEmpty` | Empty string/array/object | `length === 0` |
-| `isNotEmpty` | Not empty | `length > 0` |
-| `hasKey` | Object has key | `key in object` |
-| `arrayContains` | Array includes item | `array.includes(item)` |
-| `matchesSchema` | JSON Schema validation | Use `ajv` library |
-
-**Implementation**:
-
-```typescript
-// src/assertions/matchers.ts
-
-startsWith(prefix: string): this {
-  if (typeof this.value !== 'string' || !this.value.startsWith(prefix)) {
-    throw new AssertionError(
-      `Expected "${this.value}" to start with "${prefix}"`
-    );
-  }
-  return this;
-}
-
-endsWith(suffix: string): this {
-  if (typeof this.value !== 'string' || !this.value.endsWith(suffix)) {
-    throw new AssertionError(
-      `Expected "${this.value}" to end with "${suffix}"`
-    );
-  }
-  return this;
-}
-
-isEmpty(): this {
-  const length = this.getLength();
-  if (length !== 0) {
-    throw new AssertionError(`Expected empty but got length ${length}`);
-  }
-  return this;
-}
-
-matchesSchema(schema: object): this {
-  const ajv = new Ajv();
-  const validate = ajv.compile(schema);
-  if (!validate(this.value)) {
-    throw new AssertionError(
-      `Schema validation failed: ${JSON.stringify(validate.errors)}`
-    );
-  }
-  return this;
-}
-```
-
-**YAML support**:
 ```yaml
 assert:
   json:
-    - path: "$.email"
-      startsWith: "test-"
-      endsWith: "@example.com"
-    - path: "$.items"
-      isNotEmpty: true
     - path: "$.data"
       matchesSchema:
         type: object
         required: [id, name]
 ```
 
-**Estimated effort**: 2-3 hours
+Adds a dependency (`santhosh-tekuri/jsonschema` is the usual choice); weigh that
+against a single-binary distribution before taking it.
 
----
+**Effort**: 2–3 hours.
 
-### 8. Custom Matchers
-
-**Status**: Not implemented
-**Files to modify**: `src/assertions/matchers.ts`, new file `src/assertions/custom-matchers.ts`
-
-**Description**: Allow users to define custom assertion matchers.
-
-**Configuration** (`e2e.config.yaml`):
-```yaml
-matchers:
-  - "./matchers/custom-matchers.ts"
-```
-
-**Custom matcher example**:
-```typescript
-// matchers/custom-matchers.ts
-export default {
-  toBeValidEmail(value: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(value);
-  },
-
-  toBeValidUUID(value: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(value);
-  }
-};
-```
-
-**Usage in YAML**:
-```yaml
-assert:
-  json:
-    - path: "$.email"
-      toBeValidEmail: true
-    - path: "$.id"
-      toBeValidUUID: true
-```
-
-**Estimated effort**: 3-4 hours
-
----
-
-### 9. Parallel Test Groups
+### 9. Parallel test groups
 
 **Status**: Not implemented
-**Files to modify**: `src/core/test-orchestrator.ts`, `src/types.ts`
+**Files**: `internal/executor/orchestrator.go`, `internal/tryve/types.go`
 
-**Description**: Group tests that can run in parallel vs. must run sequentially.
+`defaults.parallel` is all-or-nothing. Tests that share mutable fixture state must
+today force the whole suite to `parallel: 1`. Let a test declare a group whose
+members run sequentially with respect to each other while different groups still
+run concurrently.
 
-**YAML syntax**:
-```yaml
-name: TC-USER-001
-group: user-tests        # Tests in same group run sequentially
-parallelGroup: database  # Groups with same parallelGroup can run together
-```
+Interacts with `depends`, which the orchestrator already topologically sorts —
+build on `topoSortTests` rather than beside it.
 
-**Implementation**:
-- Group tests by `group` field
-- Execute groups based on `parallelGroup`
-- Within a group, respect `depends` ordering
+**Effort**: 4–5 hours.
 
-**Estimated effort**: 4-5 hours
-
----
-
-### 10. Report History and Trends
+### 10. Report history and flaky-test detection
 
 **Status**: Not implemented
-**Files to create**: `src/reporters/history.reporter.ts`, `src/utils/history-store.ts`
+**Files**: new `internal/reporter/history.go`
 
-**Description**: Track test results over time for trend analysis.
+Persist results across runs (SQLite, or newline-delimited JSON to stay
+dependency-free) and report pass/fail rates over time, so a test that fails one run
+in ten is identified rather than re-run until it passes.
 
-**Features**:
-- Store results in SQLite database
-- Track pass/fail rates over time
-- Identify flaky tests
-- Generate trend reports
-
-**Configuration**:
 ```yaml
 reporters:
   - type: history
-    database: "./reports/history.db"
-    retention: 30  # days
+    output: "./reports/history.jsonl"
+    retention: 30   # days
 ```
 
-**Implementation**:
+`--failed-only` already persists the previous run's failures; this generalises that
+store.
 
-```typescript
-// src/utils/history-store.ts
-import Database from 'better-sqlite3';
+**Effort**: 6–8 hours.
 
-export class HistoryStore {
-  private db: Database.Database;
-
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
-    this.initSchema();
-  }
-
-  private initSchema() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS test_runs (
-        id INTEGER PRIMARY KEY,
-        run_id TEXT,
-        timestamp TEXT,
-        environment TEXT,
-        total INTEGER,
-        passed INTEGER,
-        failed INTEGER,
-        skipped INTEGER,
-        duration INTEGER
-      );
-
-      CREATE TABLE IF NOT EXISTS test_results (
-        id INTEGER PRIMARY KEY,
-        run_id TEXT,
-        test_name TEXT,
-        status TEXT,
-        duration INTEGER,
-        error_message TEXT
-      );
-    `);
-  }
-
-  recordRun(run: TestRun) { /* ... */ }
-  getHistory(testName: string, days: number) { /* ... */ }
-  getFlakyTests(threshold: number) { /* ... */ }
-}
-```
-
-**Estimated effort**: 6-8 hours
-
----
-
-## P3 - Low Priority
-
-### 11. Read-Only Adapter Mode
+### 11. Custom matchers
 
 **Status**: Not implemented
-**Files to modify**: All adapter files
+**Files**: `internal/assertion/matchers.go`
 
-**Description**: Prevent write operations in certain environments.
+Project-specific operators (`toBeValidVietnamesePhone`, `toBeValidTenantSlug`).
+Go's lack of runtime loading makes the TypeScript approach of importing a matcher
+file impossible; the realistic options are a declarative regex/predicate table in
+config, or leaving this to `matches`. Decide which before scheduling.
 
-**Configuration**:
-```yaml
-environments:
-  production:
-    readOnly: true    # Disables write operations
-```
-
-**Implementation**:
-- Add `readOnly` flag to environment config
-- Check flag before execute/insert/update/delete operations
-- Throw clear error if write attempted in read-only mode
-
-**Estimated effort**: 2 hours
+**Effort**: 3–4 hours for the config-table form.
 
 ---
 
-### 12. Test Templates
+## P3 — Low Priority
+
+### 12. Read-only environments
 
 **Status**: Not implemented
-**Files to create**: `src/core/template-loader.ts`
+**Files**: `internal/config/types.go`, every adapter
 
-**Description**: Reusable test templates.
+Mark an environment read-only so write actions (`execute`, `insertOne`, `set`,
+`del`, `produce`) are refused before they run. Aimed at `uat-verify`-style smoke
+suites pointed at production, where a stray teardown step is expensive.
 
-**Template file** (`templates/crud-test.template.yaml`):
-```yaml
-name: "TC-{{resource}}-CRUD"
-description: "CRUD test for {{resource}}"
+The shell command policy added in `adapters.shell` is the model: refuse with a
+clear message naming the policy, rather than failing at the driver.
 
-variables:
-  endpoint: "/{{resource}}"
+**Effort**: 2–3 hours.
 
-setup:
-  - adapter: postgresql
-    action: execute
-    sql: "DELETE FROM {{table}} WHERE id LIKE 'test-%'"
+### 13. Parameterised test templates
 
-execute:
-  - adapter: http
-    action: request
-    method: POST
-    url: "{{baseUrl}}{{endpoint}}"
-    body: "{{createBody}}"
-    capture:
-      id: "$.id"
-    assert:
-      status: 201
-```
+**Status**: `tryve test create --template http|shell` exists; templates take no
+parameters
+**Files**: `internal/cli/test_cmd.go`
 
-**Usage**:
-```yaml
-template: crud-test
-parameters:
-  resource: users
-  table: users
-  createBody:
-    email: "test@example.com"
-    name: "Test User"
-```
+Let a template be a file with placeholders filled from flags, so a CRUD suite for a
+new resource is one command rather than a copy-paste.
 
-**Estimated effort**: 4-5 hours
+**Effort**: 4–5 hours.
 
----
-
-### 13. Plugin System
+### 14. GraphQL adapter
 
 **Status**: Not implemented
-**Files to create**: `src/plugins/plugin-loader.ts`
+**Files**: new `internal/adapter/graphql.go`
 
-**Description**: Allow third-party plugins for custom adapters/reporters.
+Query/mutation support with GraphQL error handling, so `$.errors[0].extensions.code`
+is assertable without treating the response as an opaque 200.
 
-**Configuration**:
-```yaml
-plugins:
-  - "@company/e2e-custom-adapter"
-  - "./plugins/my-reporter"
-```
+**Effort**: 4–5 hours. Follow the adapter checklist in `CLAUDE.md`.
 
-**Plugin interface**:
-```typescript
-interface E2EPlugin {
-  name: string;
-  adapters?: Record<string, AdapterFactory>;
-  reporters?: Record<string, ReporterFactory>;
-  matchers?: Record<string, MatcherFn>;
-  functions?: Record<string, BuiltinFn>;
-}
-```
-
-**Estimated effort**: 8-10 hours
-
----
-
-### 14. GraphQL Adapter
+### 15. gRPC adapter
 
 **Status**: Not implemented
-**Files to create**: `src/adapters/graphql.adapter.ts`
+**Files**: new `internal/adapter/grpc.go`
 
-**Description**: Native GraphQL query support.
+Needs proto descriptors at runtime — server reflection, or a compiled descriptor
+set named in config. Reflection is the better default for a test runner.
 
-**YAML syntax**:
-```yaml
-- adapter: graphql
-  action: query
-  query: |
-    query GetUser($id: ID!) {
-      user(id: $id) {
-        id
-        name
-        email
-      }
-    }
-  variables:
-    id: "{{captured.user_id}}"
-  assert:
-    - path: "$.data.user.name"
-      equals: "Test User"
-```
+**Effort**: 6–8 hours. Follow the adapter checklist in `CLAUDE.md`.
 
-**Implementation**:
-- Use `graphql-request` or native fetch
-- Support query, mutation, subscription
-- Handle GraphQL errors
+### 16. Plugin system
 
-**Estimated effort**: 4-5 hours
+**Status**: Not implemented, and probably should not be
+
+Third-party adapters and reporters. Go has no practical runtime plugin story that
+survives a single static binary across platforms (`plugin` is Linux-only and
+requires matching toolchains). The realistic answer is that `pkg/runner` is the
+extension point: consumers import Tryve as a library and register their own
+adapters. Document that instead of building a plugin loader.
 
 ---
 
-### 15. gRPC Adapter
+## Debt
 
-**Status**: Not implemented
-**Files to create**: `src/adapters/grpc.adapter.ts`
+- **`find` returns a different shape from `findOne`.** The mongodb `find` action
+  returns `{documents: [...], count: N}`, while `docs/sections/adapters/mongodb.md`
+  shows `path: "[0].status"` and `capture: {n: "length"}` — addressing the array
+  directly. One of the two should change; `findOne` was aligned with the docs, and
+  `find` has not been.
+- **`kafka clear` takes 18 seconds.** It drains a topic by reading until the
+  read times out, so every test using it pays the adapter's full timeout in
+  setup. It should stop at the high-water mark instead.
+- **`--priority` is a single value**, not repeatable, despite reading like a list
+  filter. Either accept a comma-separated list or rename it.
+- **`migrate` cannot rewrite, only pin.** Some differences are mechanically
+  fixable — a `count` step whose SQL aggregates, a quoted builtin argument — and
+  a `--fix` mode could apply those, shrinking the pin set. Everything else
+  (whether a captured value is a number, whether a body is an array) needs the
+  suite to actually run, so the pin-and-work-through loop stays the general case.
+- **Retiring `tryve/v1`.** Every behaviour gated by `apiVersion` carries two code
+  paths and two tests. Once suites have migrated, drop the v1 branches and the
+  `legacyOperators`/`legacyStringify`/`legacyNormalizeValue` helpers with them.
+  A `tryve/v3` would then be gated against v2, not v1.
+- **Keep the docs honest.** `docs/sections/cli.md` once listed five flags that did
+  not exist, and `multipart` and `{row, column}` assertions were documented for a
+  long time before either was implemented. Test authors write against these pages;
+  a documented-but-missing feature means their checks silently do nothing. Build
+  the feature or leave it out of the docs.
 
-**Description**: gRPC service testing support.
-
-**Configuration**:
-```yaml
-adapters:
-  grpc:
-    protoPath: "./protos/service.proto"
-    address: "localhost:50051"
-```
-
-**YAML syntax**:
-```yaml
-- adapter: grpc
-  action: call
-  service: UserService
-  method: GetUser
-  request:
-    id: "{{user_id}}"
-  capture:
-    user_name: "name"
-  assert:
-    - path: "name"
-      equals: "Test User"
-```
-
-**Estimated effort**: 6-8 hours
-
----
-
-## Implementation Order Recommendation
-
-1. **Phase 1** (Core improvements):
-   - Lifecycle Hooks (P0)
-   - Test Dependencies (P0)
-   - Additional Assertion Operators (P2)
-
-2. **Phase 2** (Developer experience):
-   - Watch Mode (P1)
-   - Step-by-Step Mode (P1)
-   - HTTP Traffic Capture (P1)
-
-3. **Phase 3** (Advanced features):
-   - TypeScript DSL Enhancement (P1)
-   - Custom Matchers (P2)
-   - Report History (P2)
-
-4. **Phase 4** (Extensibility):
-   - Plugin System (P3)
-   - Test Templates (P3)
-   - New Adapters (P3)
 
 ---
 
@@ -889,13 +336,17 @@ adapters:
 
 When implementing a feature:
 
-1. Create a branch: `feature/<feature-name>`
-2. Update tests in `tests/` directory
-3. Update documentation in `docs/`
-4. Submit PR with description of changes
+1. Create a branch: `feature/<feature-name>`.
+2. Add unit tests beside the code (`internal/<pkg>/<file>_test.go`), and a YAML
+   test under `tests/e2e/` when the change is user-visible.
+3. Update documentation in all three places named by the Documentation Sync Rule in
+   `CLAUDE.md`.
+4. Run `make test` and `make lint`.
+5. Open a PR describing the change and what it was verified against.
 
 ## Notes
 
-- All time estimates assume familiarity with the codebase
-- Some features may require additional dependencies
-- Backward compatibility should be maintained for YAML syntax
+- Effort estimates assume familiarity with the codebase.
+- YAML syntax is backward compatible: a change that makes an existing test file
+  behave differently needs a stated migration path, except where the old behaviour
+  was to silently skip a check.

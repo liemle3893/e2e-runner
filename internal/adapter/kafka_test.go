@@ -345,7 +345,7 @@ func TestKafkaAdapter_Health_NoBrokers(t *testing.T) {
 func TestKafkaAdapter_Health_UnreachableBroker(t *testing.T) {
 	a := adapter.NewKafkaAdapter(map[string]any{
 		"brokers": []string{"127.0.0.1:19099"}, // port unlikely to be in use
-		"timeout": 500,                          // 500 ms to keep the test fast
+		"timeout": 500,                         // 500 ms to keep the test fast
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

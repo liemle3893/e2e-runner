@@ -78,3 +78,20 @@ func SuccessResult(data map[string]any, duration time.Duration, metadata map[str
 		Metadata: metadata,
 	}
 }
+
+// matchCriteria reads the match conditions for a waitFor action.
+//
+// The documented spelling is "filter"; "match" is the spelling the adapters
+// originally implemented. Both are accepted so that neither a test written
+// against the documentation nor one written against the old behaviour is
+// silently ignored — a waitFor whose criteria were dropped would wait for the
+// first message rather than the right one.
+func matchCriteria(params map[string]any) map[string]any {
+	if m, ok := params["filter"].(map[string]any); ok && len(m) > 0 {
+		return m
+	}
+	if m, ok := params["match"].(map[string]any); ok && len(m) > 0 {
+		return m
+	}
+	return nil
+}

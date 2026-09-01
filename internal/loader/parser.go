@@ -20,6 +20,8 @@ var knownStepFields = map[string]struct{}{
 	"retry":           {},
 	"delay":           {},
 	"id":              {},
+	"skip":            {},
+	"skipReason":      {},
 }
 
 // ParseFile reads the YAML test definition at path and returns a fully populated
@@ -136,26 +138,66 @@ func parseStep(m map[string]any) tryve.StepDefinition {
 				s.Capture = toStringMap(v)
 			case "assert":
 				s.Assert = v
+			case "skip":
+				s.Skip, _ = v.(bool)
+			case "skipReason":
+				s.SkipReason, _ = v.(string)
 			}
 		} else {
 			s.Params[k] = v
 		}
 	}
+
+	// "timeout" is promoted to a first-class field but deliberately left in
+	// Params as well: the kafka and eventhub adapters read it as an operation
+	// deadline of their own, and removing it would change their behaviour.
+	s.Timeout = toInt(m["timeout"])
+
 	return s
 }
 
-// toStringMap converts a map[string]any to map[string]string by coercing each
-// value with fmt.Sprintf.  Non-map inputs return nil.
+// toStringMap converts a capture block into variable-name → path pairs.
+//
+// Two shapes are accepted:
+//
+//	capture:                 capture:
+//	  user_id: "$.id"          - name: user_id
+//	                             from: "$.id"
+//
+// The list form is equivalent to the map form; `path` is accepted as a synonym
+// for `from`. Anything else returns nil.
 func toStringMap(v any) map[string]string {
-	raw, ok := v.(map[string]any)
-	if !ok {
-		return nil
+	switch raw := v.(type) {
+	case map[string]any:
+		out := make(map[string]string, len(raw))
+		for k, val := range raw {
+			out[k] = fmt.Sprintf("%v", val)
+		}
+		return out
+
+	case []any:
+		out := make(map[string]string, len(raw))
+		for _, item := range raw {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := entry["name"].(string)
+			if name == "" {
+				continue
+			}
+			source, ok := entry["from"]
+			if !ok {
+				source = entry["path"]
+			}
+			if source == nil {
+				continue
+			}
+			out[name] = fmt.Sprintf("%v", source)
+		}
+		return out
 	}
-	out := make(map[string]string, len(raw))
-	for k, val := range raw {
-		out[k] = fmt.Sprintf("%v", val)
-	}
-	return out
+	return nil
 }
 
 // toInt coerces common YAML numeric types to int.

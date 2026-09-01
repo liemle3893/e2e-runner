@@ -32,11 +32,12 @@ Run with: `tryve run --env local`
 
 | Command | Description |
 |---------|-------------|
-| `tryve run` | Execute E2E tests |
+| `tryve run [path...]` | Execute E2E tests. Each path is a file, directory, or glob; omit to use the configured `testDir` |
 | `tryve validate` | Validate test files without execution |
 | `tryve list` | List discovered tests |
 | `tryve health` | Check adapter connectivity |
 | `tryve init` | Initialize `e2e.config.yaml` |
+| `tryve migrate` | Move a suite to a new apiVersion (see below) |
 | `tryve test create <name>` | Create test from template (`--template http\|shell`) |
 | `tryve test list-templates` | List available templates |
 | `tryve doc [section]` | Show documentation for a section |
@@ -47,6 +48,7 @@ Run with: `tryve run --env local`
 
 | Flag | Description |
 |------|-------------|
+| *(positional)* | One or more test files, directories, or globs to run. A path matching nothing is an error. |
 | `-d, --test-dir` | Directory to search for test files (default: `tests`) |
 | `-g, --grep` | Filter tests by name (regex or substring) |
 | `--tag` | Filter by tag (repeatable) |
@@ -64,8 +66,19 @@ Run with: `tryve run --env local`
 | `--verbose` | Show per-step output |
 | `--debug` | Show full request/response data |
 | `--watch` | Re-run tests on file changes |
+| `--strict` | Fail a step when a `{{expression}}` cannot be resolved |
+| `--api-version` | Behaviour level for this run: `tryve/v1` or `tryve/v2` |
 
 Global flags: `--config, -c` (config file path), `--env, -e` (environment name)
+
+**Run a single test file** — the fastest way to iterate; it skips parsing the
+rest of the suite:
+
+```bash
+tryve run tests/e2e/users/TC-USER-001.test.yaml
+tryve run tests/e2e/users tests/e2e/auth        # several directories
+tryve run 'tests/e2e/**/TC-AUTH-*.test.yaml'    # glob (quote it)
+```
 
 ### `tryve test create` Options
 
@@ -73,6 +86,55 @@ Global flags: `--config, -c` (config file path), `--env, -e` (environment name)
 |------|-------------|
 | `-t, --template` | Template to use: `http`, `shell` (default: `http`) |
 | `-o, --output` | Output file path (default: `<name>.test.yaml`) |
+
+## API Version
+
+`apiVersion` selects the behaviour level. **Absent means `tryve/v1`**, so
+pointing a new binary at an existing suite never changes it; `tryve init` writes
+`tryve/v2` for new projects.
+
+```yaml
+# e2e.config.yaml
+apiVersion: tryve/v2
+```
+
+A single test file may declare its own, overriding the suite:
+
+```yaml
+# tests/e2e/users/TC-USER-001.test.yaml
+apiVersion: tryve/v1        # not migrated yet
+
+name: TC-USER-001
+```
+
+A `compatibility` map refines it per area, for adopting one at a time:
+
+```yaml
+apiVersion: tryve/v1
+compatibility:
+  assertions: tryve/v2
+```
+
+| Area | `tryve/v1` | `tryve/v2` |
+|---|---|---|
+| `assertions` | Only the HTTP keys and the 19 original operators are evaluated; anything else is dropped silently | Field assertions (`exitCode`, `stdout`, `rowCount`), `row`/`column`, aliases and added operators work; an unknown operator fails; an array body is the JSONPath root |
+| `interpolation` | Everything renders to text; objects use `%v`; output is re-scanned; builtin args keep quotes | A lone `{{expr}}` keeps its type; objects render as JSON; single-pass; args are unquoted |
+| `execution` | Step `timeout` and `skip` ignored | Both take effect |
+| `adapters` | Driver structs reach assertions, `date` keeps its time, `count` = rows, `findOne` = `{document: …}`, shell unbounded, HTTP capped at 30s | JSON-friendly SQL values, `date` is `YYYY-MM-DD`, `count` is the aggregate, `findOne` fields at top level, 60s shell fallback, step-driven HTTP deadline |
+
+`tryve migrate` manages the move:
+
+```bash
+tryve migrate                    # what would change at tryve/v2
+tryve migrate --apply            # raise the suite, pin what would break to tryve/v1
+tryve migrate --status           # how many files remain pinned
+tryve migrate --explain <file>   # what to fix in one file
+tryve migrate --unpin <file>     # once it passes at the new version
+```
+
+**When writing tests for an existing project, check its `apiVersion` first** —
+both the config and the file's own declaration. The assertion forms and result
+shapes below describe `tryve/v2`.
 
 ## Test File Structure
 
@@ -110,6 +172,9 @@ Each phase contains an array of steps:
   continueOnError: false            # Convert failure to warning, keep running
   retry: 3                          # Step-level retry count
   delay: 1000                       # Delay before execution (ms)
+  timeout: 10000                    # Fail this step after this many ms
+  skip: false                       # Skip this step
+  skipReason: ""                    # Required alongside skip
 
   # Adapter-specific params (e.g. HTTP)
   method: POST
@@ -126,7 +191,35 @@ Each phase contains an array of steps:
 
 ## Variable Interpolation
 
-Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting depth: 10 passes.
+Both `{{expression}}` and `${expression}` syntaxes are supported.
+
+**Types are preserved.** When an expression is the entire value, the resolved
+value keeps its type — so `equals: "{{captured.total}}"` compares a number
+against a numeric column. Mixing an expression with literal text produces a
+string.
+
+**Paths reach into captured data**, including array indices and JSON held as a
+string, so a captured stdout can be addressed directly instead of shelling out
+to `node -e` or `jq`:
+
+```yaml
+capture:
+  setup_result: "$.stdout"                       # '{"promotionId":"p-123","games":[…]}'
+# then
+"{{captured.setup_result.promotionId}}"          # → "p-123"
+"{{captured.setup_result.games[0].gameId}}"      # → "g-1"
+```
+
+Path forms: `a.b`, `a.b[0].c`, `a.b.0.c`.
+
+**Captured data is never re-interpolated** — a response containing `{{` is
+inserted literally. Only a variable whose own value is a template expands
+further.
+
+**Unresolved expressions** pass through as literal text by default. With
+`--strict` (or `defaults.strictResolve: true`) they fail the step instead;
+`${…}` is never affected, so shell and SQL keep their own syntax. Use
+`{{$default(value, fallback)}}` for genuinely optional values.
 
 ```yaml
 # Test variables
@@ -160,6 +253,26 @@ Both `{{expression}}` and `${expression}` syntaxes are supported. Max nesting de
 "{{$lower(value)}}"                # Lowercase
 "{{$upper(value)}}"                # Uppercase
 "{{$trim(value)}}"                 # Trim whitespace
+
+# JSON — replaces `jq` and `node -e` shell steps
+"{{$json(captured.raw)}}"                          # Parse a JSON string
+"{{$jsonPath(captured.result, data.items[0].id)}}" # Read a path out of a value
+"{{$jsonFile(local.settings.json, Values.KEY)}}"   # Read a path out of a JSON file
+
+# Types — explicit coercion for typed SQL params and comparisons
+"{{$int(captured.n)}}"             # Integer
+"{{$number(captured.amount)}}"     # Float
+"{{$bool(captured.flag)}}"         # Boolean
+"{{$default(captured.token, anon)}}" # Value, or fallback when unset
+
+# Auth — replaces token-minting shell scripts
+'{{$jwt(HS256, {{$env(JWT_SECRET)}}, {"sub":"84987654321"}, 1h)}}'
+'{{$jwt(RS256, {{$jsonFile(keys.json, private)}}, {"sub":"1"}, 30m, key-1)}}'
+"{{$hmac(payload, secret)}}"       # Hex HMAC-SHA256
+"{{$base64url(value)}}"            # Unpadded base64url
+
+# Arguments may be literals, context references, or nested {{…}} expressions.
+# Commas inside quotes, parens, and brackets are not treated as separators.
 
 # Variable cross-references (resolved in dependency order)
 base_id: "TEST"
@@ -198,14 +311,82 @@ All operators work across every adapter:
 | `notEmpty` | — | Has content |
 | `hasProperty` | string | Object has key |
 | `notHasProperty` | string | Object lacks key |
+| `startsWith` | string | String prefix |
+| `endsWith` | string | String suffix |
+| `oneOf` | array | Value is a member of the list |
+| `notOneOf` | array | Value is not a member of the list |
+| `minLength` | number | Length >= n |
+| `maxLength` | number | Length <= n |
+
+Aliases: `eq`, `ne`/`neq`, `gt`, `gte`, `lt`, `lte`, `in` (→ `oneOf`),
+`notIn`, `lengthEquals` (→ `length`), `empty` (→ `isEmpty`).
+
+**An unrecognised operator fails the assertion** and names the valid ones, so a
+misspelling is never dropped silently.
+
+### Assertion Shapes
+
+```yaml
+# 1. HTTP keys
+assert:
+  status: 200
+  statusRange: [200, 299]
+  headers: { Content-Type: "application/json" }
+  json:
+    - path: "$.data.id"
+      exists: true
+  duration: { lessThan: 500 }
+
+# 2. Field of the result — any other top-level key names a result field
+assert:
+  exitCode: 0                    # shell
+  stdout:
+    contains: "BOTH_OK"          # shell
+  rowCount:
+    gte: 1                       # SQL
+
+# 3. Path list
+assert:
+  - path: "$.rows[0].email"
+    equals: "test@example.com"
+
+# 4. Row/column, for SQL results (row defaults to 0)
+assert:
+  - row: 0
+    column: reward_key
+    equals: "only_reward"
+```
 
 ## HTTP Adapter
 
 **Action:** `request`
 
-**Params:** `url` (required), `method` (default GET), `headers`, `query`, `body`
+**Params:** `url` (required), `method` (default GET), `headers`, `query`, `body`,
+`multipart`, `timeout`, `followRedirects`
 
 Content-Type auto-set to `application/json` when body is present. Cookie jar persists across steps.
+
+**File uploads** use `multipart` (mutually exclusive with `body`); each entry has
+`name` plus either `file` or `value`, and may override `filename`/`contentType`:
+
+```yaml
+- adapter: http
+  action: request
+  method: POST
+  url: "{{baseUrl}}/ops/upload"
+  headers:
+    Authorization: "Bearer {{captured.ops_token}}"
+  multipart:
+    - name: file
+      file: "./tests/e2e/fixtures/members.csv"
+      contentType: "text/csv"
+    - name: created_by
+      value: "ops-admin"
+  assert:
+    status: 200
+```
+
+Set `followRedirects: false` to assert on a 3xx and its `Location` header.
 
 ```yaml
 - adapter: http
@@ -241,27 +422,50 @@ Content-Type auto-set to `application/json` when body is present. Cookie jar per
 
 **Action:** `exec`
 
-**Params:** `command` (required), `cwd`, `env` (map)
+**Params:** `command` (required), `cwd`, `env` (map), `timeout` (ms)
 
-Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicitly.
+A non-zero exit fails the step automatically. Adding an `exitCode` assertion
+takes over that decision, which is how you assert on a command expected to fail.
 
 ```yaml
 - adapter: shell
   action: exec
   command: "echo 'hello world'"
   cwd: "/app"
+  timeout: 10000
   env:
     NODE_ENV: "test"
   assert:
-    - path: "$.exitCode"
-      equals: 0
-    - path: "$.stdout"
+    exitCode: 0
+    stdout:
       contains: "hello"
   capture:
     version: "$.stdout"
 ```
 
 **Result data:** `stdout` (string), `stderr` (string), `exitCode` (number)
+
+**Every command is bounded by a timeout** — the step's `timeout`, else the
+adapter's `defaultTimeout`, else 60 s. On expiry the whole process group is
+killed, so anything the command backgrounded dies with it.
+
+**Command policy.** `adapters.shell` in the config may carry `allow` (regexes a
+command must match — deny-by-default once present), `deny`, `env` (the only
+variables commands inherit), and `cwd`. A refused command fails before it runs.
+
+**Prefer a built-in over a shell step** where one exists — it runs in-process,
+needs no policy exception, and fails more clearly:
+
+| Shell command | Use instead |
+|---|---|
+| `node -e "process.stdout.write(String(Date.now()))"` | `{{$now(unixMs)}}` |
+| `node -e "…JSON.parse(argv[1]).someId"` | `{{captured.result.someId}}` |
+| `cat f.json \| jq -r .a.b` | `{{$jsonFile(f.json, a.b)}}` |
+| `echo "$JSON" \| jq .field` | `{{$jsonPath(captured.json, field)}}` |
+| a script that mints a test JWT | `{{$jwt(HS256, secret, {"sub":"…"}, 1h)}}` |
+| `curl -F file=@x.csv …` | the HTTP adapter's `multipart` |
+| `psql -c "…"` | the postgresql adapter |
+| `sleep 2` | `delay: 2000` on the next step |
 
 ## PostgreSQL Adapter
 
@@ -292,7 +496,7 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
   capture:
     user_id: "$.rows[0].id"
 
-# Get single row (returns row fields at top level; throws if 0 rows)
+# Get single row (row fields at top level, plus found: true; errors if 0 rows)
 - adapter: postgresql
   action: queryOne
   sql: "SELECT * FROM users WHERE id = $1"
@@ -302,15 +506,42 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
       equals: "{{email}}"
     - path: "$.deleted_at"
       isNull: true
+    # or address cells by name (row defaults to 0):
+    - column: email
+      equals: "{{email}}"
 
-# Count rows (counts rows returned by the query, not a SQL COUNT aggregate)
+# Assert that NO row matches — allowEmpty makes an empty result a fact, not an error
+- adapter: postgresql
+  action: queryOne
+  allowEmpty: true
+  sql: "SELECT id FROM sessions WHERE user_id = $1"
+  params: ["{{user_id}}"]
+  assert:
+    found: false
+
+# Count — works with a COUNT(*) aggregate or a plain SELECT
 - adapter: postgresql
   action: count
-  sql: "SELECT * FROM users WHERE active = true"
+  sql: "SELECT COUNT(*) FROM users WHERE active = true"
   assert:
-    - path: "$.count"
-      greaterThan: 0
+    count:
+      gte: 1
 ```
+
+**Column types.** Values arrive as their natural JSON type, so no casts are
+needed to compare them:
+
+| PostgreSQL type | Becomes |
+|---|---|
+| `int2`/`int4`/`int8`, `float4`/`float8` | number |
+| `numeric`/`decimal` | number (exact decimal text when too large for a float64) |
+| `uuid` | canonical string |
+| `date` | `2026-08-31` (no time component) |
+| `timestamp`/`timestamptz` | RFC 3339 string |
+| `interval` | ISO 8601 duration, e.g. `P2DT3600S` |
+| `json`/`jsonb` | parsed object or array |
+| arrays | array, elements converted the same way |
+| `NULL` | null |
 
 ## MongoDB Adapter
 
@@ -329,16 +560,28 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
   capture:
     mongo_id: "$.insertedId"
 
-# Find
+# Find one — the document's fields are at the top level, plus found: true
 - adapter: mongodb
   action: findOne
   collection: "users"
   filter:
     email: "{{email}}"
+  capture:
+    user_id: "_id"
   assert:
     - path: "$.roles"
       type: "array"
       length: 1
+
+# Assert a document does NOT exist
+- adapter: mongodb
+  action: findOne
+  collection: "sessions"
+  allowEmpty: true
+  filter:
+    userId: "{{captured.user_id}}"
+  assert:
+    found: false
 
 # Aggregate
 - adapter: mongodb
@@ -405,25 +648,38 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
 - adapter: kafka
   action: produce
   topic: "user-events"
-  key: "user-123"
-  value:
-    type: "user.created"
-    userId: "{{user_id}}"
-  headers:
-    source: "test"
+  message:
+    key: "user-123"
+    value:
+      type: "user.created"
+      userId: "{{user_id}}"
+    headers:
+      source: "test"
 
-# Wait for a specific message
+# Produce a batch
+- adapter: kafka
+  action: produce
+  topic: "user-events"
+  messages:
+    - key: "k1"
+      value: { type: "one" }
+    - key: "k2"
+      value: { type: "two" }
+
+# Wait for a specific message. Filter keys address the payload with
+# dot-notation; envelope fields (key, topic, partition, offset) also match.
 - adapter: kafka
   action: waitFor
   topic: "user-events"
   timeout: 30000
-  match:
-    key: "user-123"
+  filter:
+    type: "user.created"
+    userId: "{{user_id}}"
   assert:
-    - path: "$.value.type"
+    - path: "type"
       equals: "user.created"
   capture:
-    event_data: "$.value"
+    event_type: "type"
 
 # Consume one message
 - adapter: kafka
@@ -432,7 +688,11 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
   timeout: 10000
 ```
 
-**Message result data:** `key` (string), `value` (parsed JSON or string), `headers` (map), `topic` (string), `partition` (number), `offset` (number)
+**consume result data:** `key` (string), `value` (parsed JSON or string), `headers` (map), `topic` (string), `partition` (number), `offset` (number)
+
+**waitFor result data:** the matched payload's fields at the top level, plus the
+envelope fields (`key`, `value`, `headers`, `topic`, `partition`, `offset`)
+alongside them; the untouched envelope is also under `message`.
 
 ## EventHub Adapter
 
@@ -463,6 +723,7 @@ Non-zero exit code is NOT an automatic failure — assert on `exitCode` explicit
 
 ```yaml
 version: "1.0"
+apiVersion: tryve/v2               # Behaviour level; absent means tryve/v1
 testDir: "tests"                   # Relative to config file
 
 environments:
@@ -491,12 +752,20 @@ environments:
       eventhub:
         connectionString: "${EVENTHUB_CONN_STR}"
         eventHubName: "my-hub"
+      shell:
+        defaultTimeout: 60000      # Bound for steps that set no timeout
+        cwd: "."                   # Relative to this file
+        allow:                     # Optional: deny-by-default once present
+          - "^node scripts/e2e/"
+        deny: []
+        env: []                    # Optional: the only variables commands inherit
 
 defaults:
   timeout: 30000                   # Per-test timeout (ms)
   retries: 0                       # Default retries
   retryDelay: 1000                 # Backoff base (ms)
   parallel: 1                      # Concurrent tests
+  strictResolve: false             # Fail a step on an unresolvable {{expression}}
 
 variables:
   apiVersion: "v1"
@@ -521,6 +790,7 @@ Environment variables are resolved via `${VAR_NAME}` in config. A `.env` file in
 
 ## Reference Files
 
+* **Getting Started** [references/getting-started.md](references/getting-started.md)
 * **YAML Test Syntax** [references/yaml-test.md](references/yaml-test.md)
 * **Assertions** [references/assertions.md](references/assertions.md)
 * **Built-in Functions** [references/built-in-functions.md](references/built-in-functions.md)

@@ -6,6 +6,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/liemle3893/go-tryve/internal/adapter"
 	"github.com/liemle3893/go-tryve/internal/config"
@@ -83,30 +84,13 @@ func testDirOrDefault(opts Options) string {
 // It registers the HTTP adapter when a baseURL is present, always registers the
 // shell adapter, and registers any additional adapters declared in the config.
 func buildRegistry(cfg *config.LoadedConfig) *adapter.Registry {
-	reg := adapter.NewRegistry()
-
-	if cfg.Environment.BaseURL != "" {
-		reg.Register("http", adapter.NewHTTPAdapter(cfg.Environment.BaseURL))
-	}
-
-	reg.Register("shell", adapter.NewShellAdapter(&adapter.ShellConfig{}))
-
-	for name, adapterCfg := range cfg.Environment.Adapters {
-		switch name {
-		case "postgresql":
-			reg.Register("postgresql", adapter.NewPostgreSQLAdapter(adapterCfg))
-		case "mongodb":
-			reg.Register("mongodb", adapter.NewMongoDBAdapter(adapterCfg))
-		case "redis":
-			reg.Register("redis", adapter.NewRedisAdapter(adapterCfg))
-		case "kafka":
-			reg.Register("kafka", adapter.NewKafkaAdapter(adapterCfg))
-		case "eventhub":
-			reg.Register("eventhub", adapter.NewEventHubAdapter(adapterCfg))
-		}
-	}
-
-	return reg
+	return adapter.BuildRegistry(adapter.RegistryOptions{
+		BaseURL:   cfg.Environment.BaseURL,
+		Adapters:  cfg.Environment.Adapters,
+		ConfigDir: ".",
+		Compat:    cfg.Compat,
+		Warn:      os.Stderr,
+	})
 }
 
 // buildReporter constructs a Multi reporter from the options. A console reporter

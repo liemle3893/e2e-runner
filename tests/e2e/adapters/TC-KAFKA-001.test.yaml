@@ -5,13 +5,14 @@ tags: [kafka, messaging, e2e]
 timeout: 60000
 
 variables:
-  topic: "e2e-test-topic"
+  topic: "test-events"
   event_type: "test.event.{{$uuid()}}"
 
 setup:
   - adapter: kafka
     action: clear
     description: "Reset Kafka test state"
+    topic: "{{topic}}"
 
 execute:
   - adapter: kafka

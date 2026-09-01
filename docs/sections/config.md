@@ -7,6 +7,8 @@ The E2E Test Runner is configured via `e2e.config.yaml` in your project root.
 ```yaml
 version: "1.0"                    # Required: config version
 
+apiVersion: tryve/v2              # Optional: behaviour level (default: tryve/v1)
+
 testDir: "tests/e2e"              # Optional: test directory (default: ".")
 
 environments:                     # Required: at least one environment
@@ -32,6 +34,16 @@ environments:                     # Required: at least one environment
         consumerGroup: "$Default" # Consumer group name
         checkpointStore: ""       # Optional: checkpoint store connection
 
+      shell:
+        defaultTimeout: 60000     # Timeout for steps that set none (default: 60000)
+        cwd: "."                  # Working directory, relative to this file
+        allow:                    # Optional: only these commands may run
+          - "^node scripts/e2e/"
+        deny: []                  # Optional: refused before allow is consulted
+        env:                      # Optional: the only variables commands inherit
+          - PATH
+          - HOME
+
   staging:
     baseUrl: "https://staging.example.com"
     adapters:
@@ -47,6 +59,7 @@ defaults:                         # Optional: default settings
   retries: 0                      # Default retry count
   retryDelay: 1000                # Delay between retries (ms)
   parallel: 1                     # Parallel test count
+  strictResolve: false            # Fail a step on an unresolvable {{expression}}
 
 variables:                        # Optional: global variables
   testPrefix: "e2e_"
@@ -54,8 +67,8 @@ variables:                        # Optional: global variables
   apiVersion: "v1"
 
 hooks:                            # Optional: lifecycle hooks
-  beforeAll: "npm run seed"       # Shell command before all tests
-  afterAll: "npm run cleanup"     # Shell command after all tests
+  beforeAll: "./scripts/seed.sh"  # Shell command before all tests
+  afterAll: "./scripts/cleanup.sh" # Shell command after all tests
   beforeEach: ""                  # Shell command before each test
   afterEach: ""                   # Shell command after each test
 
@@ -78,6 +91,8 @@ reporters:                        # Optional: report configuration
 | Option        | Type                          | Default | Description                              |
 |---------------|-------------------------------|---------|------------------------------------------|
 | `version`     | `"1.0"`                       | —       | Required. Config schema version.         |
+| `apiVersion`  | `string`                      | `tryve/v1` | Behaviour level. See below.           |
+| `compatibility` | map                         | —       | Per-area refinement of `apiVersion`.     |
 | `testDir`     | `string`                      | `"."`   | Directory to discover test files in.     |
 | `environments`| `Record<string, Environment>` | —       | Required. At least one environment.      |
 | `defaults`    | `DefaultsConfig`              | —       | Default timeout, retries, parallelism.   |
@@ -194,7 +209,7 @@ Set variables before running:
 ```bash
 export STAGING_URL="https://staging.example.com"
 export STAGING_PG_CONNECTION_STRING="postgresql://..."
-npx e2e run --env staging
+tryve run --env staging
 ```
 
 ## Global Variables
@@ -232,11 +247,108 @@ Configure defaults applied to all tests:
 
 ```yaml
 defaults:
-  timeout: 30000    # 30 second timeout
-  retries: 0        # No retries by default
-  retryDelay: 1000  # 1 second between retries
-  parallel: 1       # Sequential execution by default
+  timeout: 30000       # 30 second timeout
+  retries: 0           # No retries by default
+  retryDelay: 1000     # 1 second between retries
+  parallel: 1          # Sequential execution by default
+  strictResolve: false # Pass unresolved {{…}} through as literal text
 ```
+
+### Shell command policy
+
+A shell step runs a command on whatever machine the suite runs on, with whatever
+that machine's environment holds. `adapters.shell` narrows that:
+
+| Key | Effect |
+|---|---|
+| `allow` | Regular expressions a command must match. When present the adapter is deny-by-default and anything unmatched is refused before it runs. |
+| `deny` | Regular expressions refused outright, evaluated before `allow`. |
+| `env` | The only environment variables a command inherits. When absent, the full process environment is passed through. |
+| `cwd` | Working directory, resolved relative to the config file. |
+| `defaultTimeout` | Bound applied to steps that name no `timeout` (default 60 000 ms). |
+
+Omitting `allow` keeps every command runnable, which is what an existing suite
+expects. Adding one covering the scripts you genuinely invoke makes anything
+else fail loudly instead of executing.
+
+See `tryve doc adapters.shell`.
+
+### `apiVersion`
+
+Selects the behaviour level. **An absent value means `tryve/v1`**, so pointing a
+new binary at an existing project never changes how it behaves. `tryve init`
+writes `tryve/v2` into new projects.
+
+```yaml
+apiVersion: tryve/v2       # current behaviour
+apiVersion: tryve/v1       # previous behaviour (the default)
+```
+
+`tryve/v2` and the bare `v2` mean the same thing; `tryve.dev/v2` is accepted too.
+This is distinct from `version`, which is the config file's own schema version.
+
+`--api-version tryve/v2` on `tryve run` overrides the config for a single run,
+which is the quickest way to see what adopting a version would do.
+
+An individual test file may declare its own `apiVersion`, overriding the suite.
+That is what makes a large suite migratable: raise the suite, leave the files
+that are not ready on `tryve/v1`, and move them one at a time. `tryve migrate`
+does this bookkeeping — see `tryve doc cli`.
+
+```yaml
+# tests/e2e/users/TC-USER-001.test.yaml
+apiVersion: tryve/v1
+
+name: TC-USER-001
+```
+
+| Area | `tryve/v1` | `tryve/v2` |
+|---|---|---|
+| `assertions` | Only `status`, `statusRange`, `headers`, `json`, `body`, `duration` and the 19 original operators are evaluated; every other key is dropped in silence | Field assertions (`exitCode`, `stdout`, `rowCount`, …), `row`/`column` for SQL results, operator aliases (`gte`, `in`, …) and the added operators all work, an unrecognised operator **fails**, and an array response body is the JSONPath root |
+| `interpolation` | Every resolved value renders to text; objects render with Go's `%v`; substituted text is re-scanned for further expressions; builtin arguments keep their quotes | A lone `{{expr}}` keeps its resolved type; objects render as JSON; substitution is single-pass so captured data is never re-expanded; quoted arguments are unquoted |
+| `execution` | A step's `timeout` and `skip` are parsed and ignored | Both take effect |
+| `adapters` | `numeric`/`interval` reach assertions as driver structs, `date` keeps its time component, `count` reports rows returned, `findOne` returns only `{document: …}`, shell commands are unbounded, HTTP requests are capped at 30s | SQL values convert to JSON-friendly types, `date` is `YYYY-MM-DD`, `count` returns a `COUNT(*)` scalar, `findOne` exposes fields at the top level, shell commands get a 60s fallback timeout, HTTP requests follow the step deadline |
+
+Adopting `assertions` is the one that matters: under `tryve/v1` an assertion the
+runner does not recognise is discarded, so the step passes whatever the result
+was. Expect previously-green tests to fail when you move it — those are checks
+that were never running.
+
+### `compatibility`
+
+Refines `apiVersion` per area, for adopting one at a time across a suite too
+large to move at once:
+
+```yaml
+apiVersion: tryve/v1
+compatibility:
+  assertions: tryve/v2      # take the assertion fixes, leave the rest
+```
+
+It can also hold an area back from a newer baseline:
+
+```yaml
+apiVersion: tryve/v2
+compatibility:
+  adapters: tryve/v1
+```
+
+It is a map of areas only — `assertions`, `interpolation`, `execution`,
+`adapters`. To set the level for a whole file or suite, use `apiVersion`.
+
+### `strictResolve`
+
+By default an expression that names nothing — a misspelled variable, a value a
+previous step failed to capture — is left in place as the literal text
+`{{captured.typo}}` and sent to the system under test. The test then fails
+somewhere far from the cause, or worse, passes.
+
+With `strictResolve: true` the step fails immediately, naming the expression
+that could not be resolved. `${…}` is never affected, so shell and SQL keep
+their own variable syntax. Use `{{$default(value, fallback)}}` for values that
+are genuinely optional.
+
+The `--strict` CLI flag overrides this per run.
 
 Override in individual tests:
 
@@ -264,8 +376,8 @@ Run shell commands at specific points in the test lifecycle:
 
 ```yaml
 hooks:
-  beforeAll: "npm run db:seed"
-  afterAll: "npm run db:cleanup"
+  beforeAll: "./scripts/db-seed.sh"
+  afterAll: "./scripts/db-cleanup.sh"
   beforeEach: "echo 'Starting test...'"
   afterEach: "echo 'Test complete.'"
 ```
@@ -350,6 +462,6 @@ environments:
 Run against specific environment:
 
 ```bash
-npx e2e run --env staging
-npx e2e run --env production
+tryve run --env staging
+tryve run --env production
 ```

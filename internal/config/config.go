@@ -90,11 +90,21 @@ func Load(path, envName string) (*LoadedConfig, error) {
 		testDir = "."
 	}
 
+	compat, err := tryve.ResolveLevel(raw.APIVersion, raw.Compatibility)
+	if err != nil {
+		return nil, tryve.ConfigError(
+			err.Error(),
+			"set apiVersion to \"tryve/v1\" or \"tryve/v2\" — see `tryve doc config`",
+			nil,
+		)
+	}
+
 	return &LoadedConfig{
 		Raw:             raw,
 		Environment:     env,
 		EnvironmentName: envName,
 		TestDir:         testDir,
+		Compat:          compat,
 		Defaults:        defaults,
 		Variables:       resolvedVars,
 		Hooks:           raw.Hooks,

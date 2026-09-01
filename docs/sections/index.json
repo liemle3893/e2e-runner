@@ -1,16 +1,62 @@
 {
-  "yaml-test": { "file": "yaml-test.md", "description": "YAML test file syntax and structure" },
-  "assertions": { "file": "assertions.md", "description": "Assertion operators and JSONPath syntax" },
-  "built-in-functions": { "file": "built-in-functions.md", "description": "Built-in functions ($uuid, $timestamp, etc.)" },
-  "config": { "file": "config.md", "description": "e2e.config.yaml configuration reference" },
-  "cli": { "file": "cli.md", "description": "CLI commands and options" },
-  "examples": { "file": "examples.md", "description": "Common test patterns and recipes" },
-  "adapters": { "file": "adapters/index.md", "description": "Adapter overview and comparison" },
-  "adapters.http": { "file": "adapters/http.md", "description": "HTTP adapter for REST API testing" },
-  "adapters.shell": { "file": "adapters/shell.md", "description": "Shell/CLI adapter for command execution" },
-  "adapters.postgresql": { "file": "adapters/postgresql.md", "description": "PostgreSQL adapter" },
-  "adapters.mongodb": { "file": "adapters/mongodb.md", "description": "MongoDB adapter" },
-  "adapters.redis": { "file": "adapters/redis.md", "description": "Redis adapter" },
-  "adapters.eventhub": { "file": "adapters/eventhub.md", "description": "Azure EventHub adapter" },
-  "adapters.kafka": { "file": "adapters/kafka.md", "description": "Apache Kafka adapter" }
+  "getting-started": {
+    "file": "getting-started.md",
+    "description": "Install Tryve and run your first test"
+  },
+  "yaml-test": {
+    "file": "yaml-test.md",
+    "description": "YAML test file syntax and structure"
+  },
+  "assertions": {
+    "file": "assertions.md",
+    "description": "Assertion operators and JSONPath syntax"
+  },
+  "built-in-functions": {
+    "file": "built-in-functions.md",
+    "description": "Built-in functions ($uuid, $timestamp, etc.)"
+  },
+  "config": {
+    "file": "config.md",
+    "description": "e2e.config.yaml configuration reference"
+  },
+  "cli": {
+    "file": "cli.md",
+    "description": "CLI commands and options"
+  },
+  "examples": {
+    "file": "examples.md",
+    "description": "Common test patterns and recipes"
+  },
+  "adapters": {
+    "file": "adapters/index.md",
+    "description": "Adapter overview and comparison"
+  },
+  "adapters.http": {
+    "file": "adapters/http.md",
+    "description": "HTTP adapter for REST API testing"
+  },
+  "adapters.shell": {
+    "file": "adapters/shell.md",
+    "description": "Shell/CLI adapter for command execution"
+  },
+  "adapters.postgresql": {
+    "file": "adapters/postgresql.md",
+    "description": "PostgreSQL adapter"
+  },
+  "adapters.mongodb": {
+    "file": "adapters/mongodb.md",
+    "description": "MongoDB adapter"
+  },
+  "adapters.redis": {
+    "file": "adapters/redis.md",
+    "description": "Redis adapter"
+  },
+  "adapters.eventhub": {
+    "file": "adapters/eventhub.md",
+    "description": "Azure EventHub adapter"
+  },
+  "adapters.kafka": {
+    "file": "adapters/kafka.md",
+    "description": "Apache Kafka adapter"
+  }
 }

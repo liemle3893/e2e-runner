@@ -23,8 +23,8 @@ assert:
 ```yaml
 assert:
   - path: string                     # Path to value (JSONPath or dot notation)
-    column: string                   # Column name (PostgreSQL)
-    row: number                      # Row index (PostgreSQL, default: 0)
+    column: string                   # Column name (SQL results)
+    row: number                      # Row index (SQL results, default: 0)
 
     # Operators (choose one or more):
     equals: any
@@ -40,6 +40,65 @@ assert:
     isNull: boolean
     isNotNull: boolean
 ```
+
+Each item selects a value with **either** `path` **or** `row`/`column`, then
+applies the operators listed alongside it.
+
+### Field Assertions
+
+At the top level of an `assert` block, a key that is not one of the HTTP keys
+(`status`, `statusRange`, `headers`, `json`, `body`, `duration`) and is not an
+operator names a **field of the step result**. Its value is either a literal to
+compare for equality, or a map of operators:
+
+```yaml
+# Shell step
+assert:
+  exitCode: 0
+  stdout:
+    contains: "BOTH_OK"
+
+# SQL step
+assert:
+  rowCount:
+    gte: 1
+```
+
+This is the shortest way to assert on `exitCode`, `stdout`, `stderr`,
+`rowCount`, `rowsAffected`, `count`, and any column returned by `queryOne`.
+
+> A field whose expected value is an object made up **entirely** of operator
+> names is read as operators, not as a literal object. To compare against an
+> object like `{type: "user"}` verbatim, use the explicit path form:
+> `- path: "$.payload"` / `equals: {type: "user"}`.
+
+### Unknown Operators Fail
+
+An operator name that is not recognised produces a **failing** assertion naming
+the valid operators — a misspelling never passes quietly:
+
+```yaml
+assert:
+  - path: "$.total"
+    equalz: 5        # fails: unknown assertion operator "equalz"
+```
+
+### Comparing Against Captured Values
+
+An expression that is the entire value keeps its resolved type, so a captured
+number compares as a number:
+
+```yaml
+capture:
+  expected_total: "$.total"          # captures the number 42
+
+assert:
+  - path: "$.rows[0].total"          # a numeric column, also 42
+    equals: "{{captured.expected_total}}"   # passes
+```
+
+Mixing an expression with literal text produces a string, as you would expect:
+`equals: "id-{{captured.n}}"` compares against `"id-42"`.
 
 ---
 
@@ -107,6 +166,23 @@ assert:
 ---
 
 ## Assertion Operators
+
+### Aliases
+
+Each operator also accepts a shorthand spelling:
+
+| Alias | Canonical operator |
+|---|---|
+| `eq` | `equals` |
+| `ne`, `neq` | `notEquals` |
+| `gt` | `greaterThan` |
+| `gte` | `greaterThanOrEqual` |
+| `lt` | `lessThan` |
+| `lte` | `lessThanOrEqual` |
+| `in` | `oneOf` |
+| `notIn` | `notOneOf` |
+| `lengthEquals` | `length` |
+| `empty` | `isEmpty` |
 
 ### `equals`
 
@@ -254,6 +330,44 @@ assert:
 ```
 
 ---
+
+### `startsWith` / `endsWith`
+
+String prefix and suffix checks.
+
+```yaml
+assert:
+  json:
+    - path: "$.email"
+      startsWith: "test-"
+      endsWith: "@example.com"
+```
+
+### `oneOf` / `notOneOf`
+
+Value must be (or must not be) a member of the given list. `in` and `notIn` are
+aliases.
+
+```yaml
+assert:
+  json:
+    - path: "$.label"
+      in: ["GOLD", "SILVER"]
+    - path: "$.state"
+      notOneOf: ["DELETED", "ARCHIVED"]
+```
+
+### `minLength` / `maxLength`
+
+Bound the length of a string, array, or object.
+
+```yaml
+assert:
+  json:
+    - path: "$.items"
+      minLength: 1
+      maxLength: 50
+```
 
 ## HTTP-Specific Assertions
 
@@ -486,86 +600,4 @@ verify:
       - path: "roles"
         type: "array"
         length: 2
-```
-
----
-
-## Programmatic Assertions (TypeScript)
-
-When using TypeScript tests, the `expect()` API provides additional matchers:
-
-```typescript
-import {
-  expect,
-  assert,
-  assertFalse,
-  fail,
-  assertThrows,
-  assertThrowsAsync,
-} from '@liemle3893/go-tryve';
-
-// Basic matchers
-expect(value).toBe(expected);           // Strict equality (===)
-expect(value).toEqual(expected);        // Deep equality
-expect(value).toBeOneOf([a, b, c]);     // One of array values
-
-// Truthiness
-expect(value).toBeDefined();
-expect(value).toBeUndefined();
-expect(value).toBeNull();
-expect(value).toBeNotNull();
-expect(value).toBeTruthy();
-expect(value).toBeFalsy();
-
-// Collections
-expect(array).toContain(item);
-expect(value).toHaveLength(5);
-
-// Strings/Patterns
-expect(string).toMatch(/pattern/);
-expect(string).toMatch('regex-string');
-
-// Numbers
-expect(num).toBeGreaterThan(5);
-expect(num).toBeGreaterThanOrEqual(5);
-expect(num).toBeLessThan(10);
-expect(num).toBeLessThanOrEqual(10);
-
-// Objects
-expect(obj).toHaveProperty('key');
-expect(obj).toHaveProperty('key', 'value');
-
-// Types
-expect(value).toBeType('string');
-
-// Negation
-expect(value).not.toBe(wrong);
-expect(array).not.toContain(item);
-
-// Direct assertions
-assert(condition, 'Error message');
-assertFalse(condition, 'Error message');
-fail('Force failure');
-
-// Sync throw assertions
-assertThrows(() => {
-  dangerousFn();
-});
-assertThrows(() => { throw new Error('bad'); }, 'bad');        // Match message substring
-assertThrows(() => { throw new Error('bad'); }, /bad/);        // Match message regex
-assertThrows(() => { throw new TypeError(); }, TypeError);     // Match error class
-
-// Async throw assertions
-await assertThrowsAsync(async () => {
-  await someAsyncFn();
-});
-await assertThrowsAsync(async () => {
-  await someAsyncFn();
-}, 'Expected error');                                          // Match message substring
-await assertThrowsAsync(async () => {
-  await someAsyncFn();
-}, /expected/i);                                               // Match message regex
-await assertThrowsAsync(async () => {
-  await someAsyncFn();
-}, CustomError);                                               // Match error class
 ```

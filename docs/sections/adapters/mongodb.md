@@ -13,8 +13,6 @@ environments:
         database: "mydb"      # Database name
 ```
 
-**Peer dependency:** `npm install mongodb`
-
 ## Action: `insertOne`
 
 Insert single document.
@@ -48,7 +46,10 @@ Insert multiple documents.
 
 ## Action: `findOne`
 
-Find single document.
+Find a single document. The document's fields are returned at the top level, so
+paths and captures address them directly — the same shape the postgresql
+adapter's `queryOne` returns. The whole document is also available under
+`document`, and `found` reports whether there was a match.
 
 ```yaml
 - adapter: mongodb
@@ -62,6 +63,20 @@ Find single document.
   assert:
     - path: "name"
       equals: "Test User"
+```
+
+No match fails the step. To assert that a document does *not* exist, set
+`allowEmpty`:
+
+```yaml
+- adapter: mongodb
+  action: findOne
+  collection: "sessions"
+  allowEmpty: true
+  filter:
+    userId: "{{captured.user_id}}"
+  assert:
+    found: false
 ```
 
 ## Action: `find`

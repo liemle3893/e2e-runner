@@ -4,16 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/liemle3893/go-tryve/internal/tryve"
 )
 
 const (
-	postgresqlAdapterName  = "postgresql"
+	postgresqlAdapterName   = "postgresql"
 	defaultPostgresPoolSize = 5
 )
 
@@ -25,6 +29,7 @@ type PostgreSQLAdapter struct {
 	schema           string
 	poolSize         int
 	pool             *pgxpool.Pool
+	compat           tryve.CompatMode
 }
 
 // NewPostgreSQLAdapter constructs a PostgreSQLAdapter from a configuration map.
@@ -34,6 +39,12 @@ type PostgreSQLAdapter struct {
 //   - "schema"           (string, optional) — default search_path schema.
 //   - "poolSize"         (int or float64, optional, default 5) — maximum pool connections.
 func NewPostgreSQLAdapter(cfg map[string]any) *PostgreSQLAdapter {
+	return NewPostgreSQLAdapterWithCompat(cfg, tryve.LegacyCompat())
+}
+
+// NewPostgreSQLAdapterWithCompat is NewPostgreSQLAdapter with an explicit
+// compatibility mode selecting how column values and the count action behave.
+func NewPostgreSQLAdapterWithCompat(cfg map[string]any, mode tryve.CompatMode) *PostgreSQLAdapter {
 	connStr, _ := cfg["connectionString"].(string)
 
 	schema, _ := cfg["schema"].(string)
@@ -54,6 +65,7 @@ func NewPostgreSQLAdapter(cfg map[string]any) *PostgreSQLAdapter {
 		connectionString: connStr,
 		schema:           schema,
 		poolSize:         poolSize,
+		compat:           mode,
 	}
 }
 
@@ -211,13 +223,31 @@ func (a *PostgreSQLAdapter) queryOneAction(ctx context.Context, params map[strin
 		return nil, tryve.AdapterError(postgresqlAdapterName, "queryOne", "query execution failed", execErr)
 	}
 	if len(rows) == 0 {
-		return nil, tryve.AdapterError(postgresqlAdapterName, "queryOne", "query returned no rows", nil)
+		// With allowEmpty the absence of a row is a fact to assert on, not a step
+		// error — this is how a test says "no such row exists" without having to
+		// fall back to continueOnError and lose every other check in the step.
+		if boolParam(params, "allowEmpty") {
+			return SuccessResult(map[string]any{"found": false}, duration, nil), nil
+		}
+		return nil, tryve.AdapterError(postgresqlAdapterName, "queryOne",
+			"query returned no rows; set allowEmpty: true to treat an empty result as a value to assert on", nil)
 	}
 
 	// Return the row columns at top level (matching TS behavior).
 	// This allows capture paths like "id" to work as $.id.
 	data := rows[0]
+	if tryve.CompatOrDefault(ctx, a.compat).Modern(tryve.CompatAdapters) {
+		if _, taken := data["found"]; !taken {
+			data["found"] = true
+		}
+	}
 	return SuccessResult(data, duration, nil), nil
+}
+
+// boolParam reads an optional boolean parameter, defaulting to false.
+func boolParam(params map[string]any, key string) bool {
+	b, _ := params[key].(bool)
+	return b
 }
 
 // countAction runs a SELECT and returns only the number of rows produced.
@@ -237,10 +267,46 @@ func (a *PostgreSQLAdapter) countAction(ctx context.Context, params map[string]a
 		return nil, tryve.AdapterError(postgresqlAdapterName, "count", "query execution failed", execErr)
 	}
 
+	// Before the adapters area changed, count reported the number of rows the
+	// query returned, so SELECT COUNT(*) always answered 1.
+	countValue := float64(len(rows))
+	if tryve.CompatOrDefault(ctx, a.compat).Modern(tryve.CompatAdapters) {
+		countValue = scalarCount(rows)
+	}
+
 	data := map[string]any{
-		"count": float64(len(rows)),
+		"count":    countValue,
+		"rowCount": float64(len(rows)),
+		"rows":     rows,
 	}
 	return SuccessResult(data, duration, nil), nil
+}
+
+// scalarCount decides what "count" means for a result set.
+//
+// A query that aggregates — SELECT COUNT(*) — returns one row holding one
+// numeric column, and the count the author wants is that value, not the number
+// of rows the aggregate happened to occupy (always 1). Any other shape falls
+// back to the number of rows returned.
+func scalarCount(rows []map[string]any) float64 {
+	if len(rows) == 1 {
+		for _, v := range rows[0] {
+			if len(rows[0]) != 1 {
+				break
+			}
+			switch n := v.(type) {
+			case int64:
+				return float64(n)
+			case int32:
+				return float64(n)
+			case int:
+				return float64(n)
+			case float64:
+				return n
+			}
+		}
+	}
+	return float64(len(rows))
 }
 
 // fetchRows executes sql with args and collects all result rows into a slice of
@@ -258,6 +324,11 @@ func (a *PostgreSQLAdapter) fetchRows(ctx context.Context, sql string, args []an
 		colNames[i] = string(fd.Name)
 	}
 
+	colOIDs := make([]uint32, len(fieldDescs))
+	for i, fd := range fieldDescs {
+		colOIDs[i] = fd.DataTypeOID
+	}
+
 	var result []map[string]any
 	for pgRows.Next() {
 		values, err := pgRows.Values()
@@ -266,7 +337,7 @@ func (a *PostgreSQLAdapter) fetchRows(ctx context.Context, sql string, args []an
 		}
 		row := make(map[string]any, len(colNames))
 		for i, name := range colNames {
-			row[name] = normalizeValue(values[i])
+			row[name] = normalizeColumn(values[i], colOIDs[i], tryve.CompatOrDefault(ctx, a.compat).Modern(tryve.CompatAdapters))
 		}
 		result = append(result, row)
 	}
@@ -305,6 +376,51 @@ func extractSQLParams(params map[string]any) (string, []any, error) {
 	return sql, queryParams, nil
 }
 
+// normalizeColumn converts one decoded column value into a JSON-friendly
+// representation, using the column's PostgreSQL type OID for the cases where
+// the Go type alone is ambiguous.
+//
+// The OID matters for DATE: pgx decodes both DATE and TIMESTAMP to time.Time, so
+// without it a DATE column renders as "2026-08-31T00:00:00Z" and never compares
+// equal to the "2026-08-31" a test author writes.
+func normalizeColumn(v any, oid uint32, modern bool) any {
+	if v == nil {
+		return nil
+	}
+	if !modern {
+		return legacyNormalizeValue(v)
+	}
+	if t, ok := v.(time.Time); ok && oid == pgtype.DateOID {
+		return t.Format(dateOnlyLayout)
+	}
+	return normalizeValue(v)
+}
+
+// legacyNormalizeValue reproduces the conversion performed before the adapters
+// area changed: uuid bytes, []byte, time.Time, net.IP, and fmt.Stringer were
+// converted, and every other driver type — pgtype.Numeric among them — reached
+// assertions as-is.
+func legacyNormalizeValue(v any) any {
+	switch val := v.(type) {
+	case [16]byte:
+		return formatUUIDBytes(val)
+	case []byte:
+		var js any
+		if err := json.Unmarshal(val, &js); err == nil {
+			return js
+		}
+		return string(val)
+	case time.Time:
+		return val.Format(time.RFC3339)
+	case net.IP:
+		return val.String()
+	case fmt.Stringer:
+		return val.String()
+	default:
+		return v
+	}
+}
+
 // normalizeValue converts pgx-specific Go types into JSON-friendly representations
 // so that captured values and assertions work as expected.
 func normalizeValue(v any) any {
@@ -312,10 +428,28 @@ func normalizeValue(v any) any {
 		return nil
 	}
 	switch val := v.(type) {
+	case pgtype.Numeric:
+		// NUMERIC / DECIMAL columns decode to a struct with no String method.
+		// Left as-is it reaches assertions as an opaque struct, so `equals: 100`
+		// fails and `greaterThan` silently compares against zero.
+		return normalizeNumericValue(val)
+	case pgtype.Interval:
+		return formatInterval(val)
+	case pgtype.UUID:
+		if !val.Valid {
+			return nil
+		}
+		return formatUUIDBytes(val.Bytes)
+	case []any:
+		// Array columns decode element-wise; normalise each element so a uuid[]
+		// or numeric[] is as usable as its scalar counterpart.
+		out := make([]any, len(val))
+		for i, elem := range val {
+			out[i] = normalizeValue(elem)
+		}
+		return out
 	case [16]byte:
-		// UUID: format as standard string "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-		return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-			val[0:4], val[4:6], val[6:8], val[8:10], val[10:16])
+		return formatUUIDBytes(val)
 	case []byte:
 		// Try JSON first, then string
 		var js any
@@ -333,3 +467,85 @@ func normalizeValue(v any) any {
 		return v
 	}
 }
+
+// formatUUIDBytes renders 16 raw bytes as a canonical UUID string.
+func formatUUIDBytes(b [16]byte) string {
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// normalizeNumericValue converts a pgtype.Numeric into a plain float64 so that
+// it compares and orders like any other number.
+//
+// Values that cannot be represented exactly as a float64 — anything outside
+// ±2^53 or with more precision than a float64 holds — are returned as their
+// decimal string instead, so a big NUMERIC is never silently rounded.
+func normalizeNumericValue(n pgtype.Numeric) any {
+	if !n.Valid {
+		return nil
+	}
+	if n.NaN {
+		return "NaN"
+	}
+	if n.InfinityModifier != pgtype.Finite {
+		return n.InfinityModifier.String()
+	}
+
+	text, err := n.MarshalJSON()
+	if err != nil {
+		return nil
+	}
+	str := strings.Trim(string(text), `"`)
+
+	f, err := strconv.ParseFloat(str, 64)
+	if err != nil {
+		return str
+	}
+	// Round-tripping proves the float64 carries the full value; when it does not,
+	// hand back the exact decimal text rather than a lossy number.
+	if strconv.FormatFloat(f, 'f', -1, 64) != str && !numericallyEqual(str, f) {
+		return str
+	}
+	return f
+}
+
+// numericallyEqual reports whether the decimal text and the float64 denote the
+// same value, allowing for differences in formatting (trailing zeros, exponents).
+func numericallyEqual(text string, f float64) bool {
+	exact, ok := new(big.Rat).SetString(text)
+	if !ok {
+		return false
+	}
+	fromFloat := new(big.Rat).SetFloat64(f)
+	if fromFloat == nil {
+		return false
+	}
+	return exact.Cmp(fromFloat) == 0
+}
+
+// formatInterval renders a pgtype.Interval as an ISO 8601 duration string,
+// which is both human-readable and stable to assert against.
+func formatInterval(iv pgtype.Interval) any {
+	if !iv.Valid {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("P")
+	if iv.Months != 0 {
+		fmt.Fprintf(&b, "%dM", iv.Months)
+	}
+	if iv.Days != 0 {
+		fmt.Fprintf(&b, "%dD", iv.Days)
+	}
+	if iv.Microseconds != 0 {
+		seconds := float64(iv.Microseconds) / 1e6
+		fmt.Fprintf(&b, "T%gS", seconds)
+	}
+	if b.Len() == 1 {
+		return "PT0S"
+	}
+	return b.String()
+}
+
+// dateOnlyLayout formats a DATE column without a time component.
+const dateOnlyLayout = "2006-01-02"

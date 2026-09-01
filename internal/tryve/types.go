@@ -34,20 +34,25 @@ const (
 
 // TestDefinition holds the full parsed representation of a YAML test file.
 type TestDefinition struct {
-	Name        string            `yaml:"name"`
-	Description string            `yaml:"description"`
-	Priority    TestPriority      `yaml:"priority"`
-	Tags        []string          `yaml:"tags"`
-	Skip        bool              `yaml:"skip"`
-	SkipReason  string            `yaml:"skipReason"`
-	Timeout     int               `yaml:"timeout"`
-	Retries     int               `yaml:"retries"`
-	Depends     []string          `yaml:"depends"`
-	Variables   map[string]any    `yaml:"variables"`
-	Setup       []StepDefinition  `yaml:"setup"`
-	Execute     []StepDefinition  `yaml:"execute"`
-	Verify      []StepDefinition  `yaml:"verify"`
-	Teardown    []StepDefinition  `yaml:"teardown"`
+	Name        string       `yaml:"name"`
+	Description string       `yaml:"description"`
+	Priority    TestPriority `yaml:"priority"`
+	Tags        []string     `yaml:"tags"`
+	Skip        bool         `yaml:"skip"`
+	SkipReason  string       `yaml:"skipReason"`
+	Timeout     int          `yaml:"timeout"`
+	Retries     int          `yaml:"retries"`
+	// APIVersion overrides the suite's behaviour level for this file alone, which
+	// is what makes a large suite migratable one file at a time.
+	APIVersion any `yaml:"apiVersion"`
+	// Compatibility refines APIVersion per area for this file.
+	Compatibility any              `yaml:"compatibility"`
+	Depends       []string         `yaml:"depends"`
+	Variables     map[string]any   `yaml:"variables"`
+	Setup         []StepDefinition `yaml:"setup"`
+	Execute       []StepDefinition `yaml:"execute"`
+	Verify        []StepDefinition `yaml:"verify"`
+	Teardown      []StepDefinition `yaml:"teardown"`
 	// SourceFile holds the file path this definition was loaded from; not serialised.
 	SourceFile string `yaml:"-"`
 }
@@ -55,17 +60,25 @@ type TestDefinition struct {
 // StepDefinition describes a single adapter action within a test phase.
 type StepDefinition struct {
 	// ID is assigned at runtime and not present in YAML.
-	ID              string            `yaml:"-"`
-	Adapter         string            `yaml:"adapter"`
-	Action          string            `yaml:"action"`
-	Description     string            `yaml:"description"`
+	ID          string `yaml:"-"`
+	Adapter     string `yaml:"adapter"`
+	Action      string `yaml:"action"`
+	Description string `yaml:"description"`
 	// Params holds adapter-specific parameters; populated after YAML unmarshalling.
-	Params          map[string]any    `yaml:"-"`
-	Capture         map[string]string `yaml:"capture"`
+	Params map[string]any `yaml:"-"`
+	// Capture is populated by the loader from the raw YAML, which accepts both the
+	// map and list spellings of a capture block; it is not unmarshalled directly.
+	Capture         map[string]string `yaml:"-"`
 	Assert          any               `yaml:"assert"`
 	ContinueOnError bool              `yaml:"continueOnError"`
 	Retry           int               `yaml:"retry"`
 	Delay           int               `yaml:"delay"`
+	// Timeout bounds this step in milliseconds. Zero means the adapter's own
+	// default applies, and failing that the enclosing test timeout.
+	Timeout int `yaml:"timeout"`
+	// Skip omits this step; SkipReason records why.
+	Skip       bool   `yaml:"skip"`
+	SkipReason string `yaml:"skipReason"`
 }
 
 // StepResult carries the data returned by an adapter action execution.
@@ -124,6 +137,15 @@ type InterpolationContext struct {
 	Captured  map[string]any
 	BaseURL   string
 	Env       map[string]string
+	// Strict makes an unresolvable {{…}} expression an error instead of leaving
+	// the raw token in place. Without it a misspelled variable is sent to the
+	// system under test verbatim, and the test fails somewhere far from the cause.
+	// It never applies to ${…}, which shell scripts and SQL use for their own
+	// variables.
+	Strict bool
+	// Compat selects which resolution behaviour applies. The zero value is
+	// legacy, so a context built without one resolves as it did before.
+	Compat CompatMode
 }
 
 // NewInterpolationContext initialises an InterpolationContext with empty maps ready for use.

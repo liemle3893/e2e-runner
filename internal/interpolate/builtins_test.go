@@ -73,8 +73,8 @@ func TestBuiltin_Random(t *testing.T) {
 // TestBuiltin_RandomString verifies that $randomString(n) returns a string of length n.
 func TestBuiltin_RandomString(t *testing.T) {
 	cases := []struct {
-		arg      string
-		wantLen  int
+		arg     string
+		wantLen int
 	}{
 		{"8", 8},
 		{"16", 16},
@@ -234,8 +234,8 @@ func TestBuiltin_Now(t *testing.T) {
 	}{
 		{"iso", "T"},
 		{"date", "-"},
-		{"unix", ""},     // numeric
-		{"unixMs", ""},   // numeric
+		{"unix", ""},   // numeric
+		{"unixMs", ""}, // numeric
 	}
 	for _, tc := range cases {
 		got, err := interpolate.CallBuiltin("now", tc.format)

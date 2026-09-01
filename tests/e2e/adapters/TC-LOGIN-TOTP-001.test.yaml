@@ -4,6 +4,13 @@ priority: P0
 tags: [auth, login, totp, smoke]
 timeout: 30000
 
+# This exercises the $totp builtin against an ops API with credentials that only
+# exist in a private deployment — not against the demo-server that the rest of
+# tests/e2e/adapters/ targets. It is skipped so a local `tryve run --env demo`
+# is meaningful; point baseUrl at that API and clear this flag to run it.
+skip: true
+skipReason: "Requires an external ops API (/api/v1/ops/auth/*) and real credentials; not served by demo-server"
+
 variables:
   login_username: "ops-admin"
   login_password: "ChangeMe123!@#"

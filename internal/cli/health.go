@@ -32,34 +32,13 @@ func healthCmdHandler(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Build adapter registry with all configured adapters.
-	reg := adapter.NewRegistry()
-
-	// HTTP adapter: available when baseURL is configured.
-	if cfg.Environment.BaseURL != "" {
-		reg.Register("http", adapter.NewHTTPAdapter(cfg.Environment.BaseURL))
-	}
-
-	// Shell adapter is always available.
-	reg.Register("shell", adapter.NewShellAdapter(&adapter.ShellConfig{}))
-
-	// Register adapters from the environment config block.
-	for name, adapterCfg := range cfg.Environment.Adapters {
-		switch name {
-		case "http", "shell":
-			// Already registered above; skip duplicate.
-		case "postgresql":
-			reg.Register("postgresql", adapter.NewPostgreSQLAdapter(adapterCfg))
-		case "mongodb":
-			reg.Register("mongodb", adapter.NewMongoDBAdapter(adapterCfg))
-		case "redis":
-			reg.Register("redis", adapter.NewRedisAdapter(adapterCfg))
-		case "kafka":
-			reg.Register("kafka", adapter.NewKafkaAdapter(adapterCfg))
-		case "eventhub":
-			reg.Register("eventhub", adapter.NewEventHubAdapter(adapterCfg))
-		}
-	}
+	reg := adapter.BuildRegistry(adapter.RegistryOptions{
+		BaseURL:   cfg.Environment.BaseURL,
+		Adapters:  cfg.Environment.Adapters,
+		ConfigDir: adapter.ConfigDirOf(cfgPath),
+		Compat:    cfg.Compat,
+		Warn:      os.Stderr,
+	})
 
 	ctx := cmd.Context()
 	if ctx == nil {

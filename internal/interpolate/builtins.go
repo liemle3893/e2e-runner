@@ -1,7 +1,7 @@
 package interpolate
 
 import (
-	"crypto/md5"  //nolint:gosec // md5 used for non-security hashing
+	"crypto/md5" //nolint:gosec // md5 used for non-security hashing
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
+
+	"github.com/liemle3893/go-tryve/internal/tryve"
 )
 
 // BuiltinFunc is the signature for all built-in interpolation functions.
@@ -51,6 +53,47 @@ func CallBuiltin(name string, args ...string) (string, error) {
 	fn, ok := builtins[name]
 	if !ok {
 		return "", fmt.Errorf("unknown built-in function: %q", name)
+	}
+	return fn(args...)
+}
+
+// ContextualFunc is a built-in that needs the interpolation context, and that may
+// return a value of any type rather than text.
+type ContextualFunc func(ctx *tryve.InterpolationContext, args ...string) (any, error)
+
+// contextualBuiltins holds built-ins that read the surrounding context or return
+// structured values.
+//
+// It is populated in init rather than as a composite literal because these
+// functions resolve their arguments through the interpolator, which dispatches
+// back through this map — a cycle the compiler rejects at package scope.
+var contextualBuiltins map[string]ContextualFunc
+
+func init() {
+	contextualBuiltins = map[string]ContextualFunc{
+		"json":      builtinJSON,
+		"jsonPath":  builtinJSONPath,
+		"jsonFile":  builtinJSONFile,
+		"int":       builtinInt,
+		"number":    builtinNumber,
+		"bool":      builtinBool,
+		"default":   builtinDefault,
+		"jwt":       builtinJWT,
+		"hmac":      builtinHMAC,
+		"base64url": builtinBase64URL,
+	}
+}
+
+// CallBuiltinValue calls a named built-in, preferring a contextual implementation
+// when one exists. The returned value keeps its natural type so that, for example,
+// {{$int(captured.n)}} yields a number rather than text.
+func CallBuiltinValue(name string, ctx *tryve.InterpolationContext, args ...string) (any, error) {
+	if fn, ok := contextualBuiltins[name]; ok {
+		return fn(ctx, args...)
+	}
+	fn, ok := builtins[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown built-in function %q; run `tryve doc built-in-functions` for the list", name)
 	}
 	return fn(args...)
 }

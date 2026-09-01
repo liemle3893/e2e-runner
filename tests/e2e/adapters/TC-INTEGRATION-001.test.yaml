@@ -97,7 +97,8 @@ verify:
     action: get
     key: "{{captured.cache_key}}"
     assert:
-      contains: "{{captured.user_id}}"
+      value:
+        contains: "{{captured.user_id}}"
 
   # Verify document via HTTP
   - adapter: http

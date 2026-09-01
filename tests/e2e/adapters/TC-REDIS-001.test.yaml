@@ -62,7 +62,7 @@ verify:
     action: get
     key: "{{captured.test_key}}"
     assert:
-      equals: "{{updated_value}}"
+      value: "{{updated_value}}"
 
 teardown:
   # Clean up: Delete the test key

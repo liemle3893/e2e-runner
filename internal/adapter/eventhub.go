@@ -211,14 +211,15 @@ func (a *EventHubAdapter) consumeAction(ctx context.Context, params map[string]a
 // Params:
 //   - topic (string): Event Hub name.
 //   - timeout (int, ms): total deadline in milliseconds.
-//   - match (map[string]any): key-value pairs that must all be present in the
-//     event's body (after JSON decoding) or application properties.
+//   - filter (map[string]any): key-value pairs that must all be present in the
+//     event's body (after JSON decoding) or application properties. "match" is
+//     accepted as a synonym.
 //   - partitionId (string, optional): target partition. Defaults to "0".
 func (a *EventHubAdapter) waitForAction(ctx context.Context, params map[string]any) (*tryve.StepResult, error) {
 	hubName := resolveHubName(params, a.eventHubName)
 	timeoutMs := getIntDefault(params, "timeout", 10000)
 	partitionID := getStrDefault(params, "partitionId", "0")
-	match := getMap(params, "match")
+	match := matchCriteria(params)
 
 	consumer, err := azeventhubs.NewConsumerClientFromConnectionString(
 		a.connectionString, hubName, a.consumerGroup, nil,

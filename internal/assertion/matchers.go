@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -14,9 +15,88 @@ type MatchResult struct {
 	Message string
 }
 
+// operatorAliases maps shorthand operator spellings to their canonical names.
+// Aliases exist because these spellings appear widely in hand-written test
+// suites; before they were recognised, an assertion using one was silently
+// dropped instead of evaluated.
+var operatorAliases = map[string]string{
+	"eq":           "equals",
+	"ne":           "notEquals",
+	"neq":          "notEquals",
+	"gt":           "greaterThan",
+	"gte":          "greaterThanOrEqual",
+	"lt":           "lessThan",
+	"lte":          "lessThanOrEqual",
+	"lengthEquals": "length",
+	"in":           "oneOf",
+	"notIn":        "notOneOf",
+	"isEmpty":      "isEmpty",
+	"empty":        "isEmpty",
+}
+
+// canonicalOperators is the set of operator names Match understands directly.
+var canonicalOperators = map[string]bool{
+	"equals":             true,
+	"notEquals":          true,
+	"contains":           true,
+	"notContains":        true,
+	"matches":            true,
+	"type":               true,
+	"exists":             true,
+	"notExists":          true,
+	"isNull":             true,
+	"isNotNull":          true,
+	"greaterThan":        true,
+	"lessThan":           true,
+	"greaterThanOrEqual": true,
+	"lessThanOrEqual":    true,
+	"length":             true,
+	"minLength":          true,
+	"maxLength":          true,
+	"isEmpty":            true,
+	"notEmpty":           true,
+	"hasProperty":        true,
+	"notHasProperty":     true,
+	"startsWith":         true,
+	"endsWith":           true,
+	"oneOf":              true,
+	"notOneOf":           true,
+}
+
+// CanonicalOperator resolves an operator name or alias to its canonical form.
+// The second return value reports whether the name is a recognised operator.
+func CanonicalOperator(name string) (string, bool) {
+	if canonicalOperators[name] {
+		return name, true
+	}
+	if canon, ok := operatorAliases[name]; ok {
+		return canon, true
+	}
+	return name, false
+}
+
+// KnownOperators returns a sorted list of every operator name and alias, for
+// use in error messages that need to tell the author what is available.
+func KnownOperators() []string {
+	names := make([]string, 0, len(canonicalOperators)+len(operatorAliases))
+	for n := range canonicalOperators {
+		names = append(names, n)
+	}
+	for n := range operatorAliases {
+		if !canonicalOperators[n] {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // Match dispatches to the appropriate matcher by operator name.
 // It returns a MatchResult indicating whether the assertion passed and a human-readable message.
+// Operator aliases (gte, lt, in, …) are resolved to their canonical names first.
 func Match(operator string, actual, expected any) MatchResult {
+	operator, _ = CanonicalOperator(operator)
+
 	switch operator {
 	case "equals":
 		return matchEquals(actual, expected)
@@ -48,6 +128,18 @@ func Match(operator string, actual, expected any) MatchResult {
 		return matchLessThanOrEqual(actual, expected)
 	case "length":
 		return matchLength(actual, expected)
+	case "minLength":
+		return matchMinLength(actual, expected)
+	case "maxLength":
+		return matchMaxLength(actual, expected)
+	case "startsWith":
+		return matchStartsWith(actual, expected)
+	case "endsWith":
+		return matchEndsWith(actual, expected)
+	case "oneOf":
+		return matchOneOf(actual, expected)
+	case "notOneOf":
+		return invert(matchOneOf(actual, expected), "notOneOf")
 	case "isEmpty":
 		return matchIsEmpty(actual)
 	case "notEmpty":
@@ -356,6 +448,73 @@ func matchLength(actual, expected any) MatchResult {
 		Pass:    false,
 		Message: fmt.Sprintf("expected length %d, got %d", wantLen, l),
 	}
+}
+
+// matchMinLength checks that the length of actual is at least the expected integer.
+func matchMinLength(actual, expected any) MatchResult {
+	l := lengthOf(actual)
+	if l < 0 {
+		return MatchResult{Pass: false, Message: fmt.Sprintf("minLength: unsupported type %T", actual)}
+	}
+	want := int(toFloat64(expected))
+	if l >= want {
+		return MatchResult{Pass: true}
+	}
+	return MatchResult{Pass: false, Message: fmt.Sprintf("expected length >= %d, got %d", want, l)}
+}
+
+// matchMaxLength checks that the length of actual is at most the expected integer.
+func matchMaxLength(actual, expected any) MatchResult {
+	l := lengthOf(actual)
+	if l < 0 {
+		return MatchResult{Pass: false, Message: fmt.Sprintf("maxLength: unsupported type %T", actual)}
+	}
+	want := int(toFloat64(expected))
+	if l <= want {
+		return MatchResult{Pass: true}
+	}
+	return MatchResult{Pass: false, Message: fmt.Sprintf("expected length <= %d, got %d", want, l)}
+}
+
+// matchStartsWith checks that the string form of actual begins with expected.
+func matchStartsWith(actual, expected any) MatchResult {
+	s, prefix := asString(actual), asString(expected)
+	if strings.HasPrefix(s, prefix) {
+		return MatchResult{Pass: true}
+	}
+	return MatchResult{Pass: false, Message: fmt.Sprintf("expected %q to start with %q", s, prefix)}
+}
+
+// matchEndsWith checks that the string form of actual ends with expected.
+func matchEndsWith(actual, expected any) MatchResult {
+	s, suffix := asString(actual), asString(expected)
+	if strings.HasSuffix(s, suffix) {
+		return MatchResult{Pass: true}
+	}
+	return MatchResult{Pass: false, Message: fmt.Sprintf("expected %q to end with %q", s, suffix)}
+}
+
+// matchOneOf checks that actual equals at least one member of the expected slice.
+func matchOneOf(actual, expected any) MatchResult {
+	allowed, ok := expected.([]any)
+	if !ok {
+		return MatchResult{Pass: false, Message: fmt.Sprintf("oneOf: expected value must be an array, got %T", expected)}
+	}
+	a := normalizeNumeric(actual)
+	for _, v := range allowed {
+		if reflect.DeepEqual(a, normalizeNumeric(v)) {
+			return MatchResult{Pass: true}
+		}
+	}
+	return MatchResult{Pass: false, Message: fmt.Sprintf("expected %v to be one of %v", actual, allowed)}
+}
+
+// asString renders a value as a string, leaving genuine strings untouched.
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // matchIsEmpty checks that actual has zero length or is nil.

@@ -3,6 +3,9 @@
 
 version: "1.0"
 
+# This repository's own suite is written against the current behaviour.
+apiVersion: tryve/v2
+
 # Environment-specific configurations
 environments:
   local:
@@ -39,8 +42,12 @@ environments:
         connectionString: "mongodb://root:root@localhost:27017"
         database: "demo"
       eventhub:
-        connectionString: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;EntityPath=fortune-events"
+        connectionString: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+        eventHubName: "fortune-events"
         consumerGroup: "$Default"
+      kafka:
+        brokers: ["localhost:9092"]
+        clientId: "tryve-e2e"
 
   #staging:
   #  baseUrl: "https://example.com"
@@ -71,12 +78,12 @@ variables:
   # Capillary API configuration
   
 
-# Lifecycle hooks (disabled for now)
+# Lifecycle hooks — shell commands run around the suite and each test.
 # hooks:
-#   beforeAll: "./lib/global-setup.ts"
-#   afterAll: "./lib/global-teardown.ts"
-#   beforeEach: "./lib/test-setup.ts"
-#   afterEach: "./lib/test-teardown.ts"
+#   beforeAll: "./scripts/seed.sh"
+#   afterAll: "./scripts/cleanup.sh"
+#   beforeEach: ""
+#   afterEach: ""
 
 # Reporter configuration
 reporters:
